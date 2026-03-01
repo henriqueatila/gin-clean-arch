@@ -213,6 +213,8 @@ Handlers are thin adapters: bind → call usecase → respond. Zero business log
 
 **DTOs** decouple HTTP wire format from domain model. Domain structs never carry JSON tags or `binding:` tags.
 
+**Pragmatic note on model duplication:** Strict separation creates a "mapping tax" — `createProductRequest` → `CreateProductInput` → `Product` → `productModel` → `productResponse`. This cost is justified when business rules exist between layers. For pure CRUD endpoints with no business logic, you may skip the usecase input type and map directly from request DTO to domain entity in the handler — but never skip the response DTO (it controls what the client sees) and never add `json`/`binding` tags to domain structs.
+
 ```go
 // internal/delivery/http/product_dto.go
 package http
@@ -283,6 +285,32 @@ func (h *ProductHandler) Create(c *gin.Context) {
 ```
 
 **Flow:** `ShouldBindJSON` → map to domain input → usecase → map to response DTO → `c.JSON`.
+
+---
+
+## Package by Layer vs Package by Component
+
+This skill defaults to **package-by-layer** (`internal/domain`, `internal/usecase`, `internal/repository`, `internal/delivery/http`). This is the standard Go clean architecture layout and works well for small-to-medium projects.
+
+For larger codebases with multiple bounded contexts, consider **package-by-component** (Simon Brown's "The Missing Chapter"):
+
+```
+internal/
+├── product/           # All product code — private implementations
+│   ├── entity.go      # Product struct (unexported details)
+│   ├── usecase.go     # productUsecase (unexported)
+│   ├── repository.go  # postgresProductRepo (unexported)
+│   ├── handler.go     # ProductHandler (exported — entry point)
+│   └── product.go     # Exported interfaces + constructor
+├── order/             # Same pattern for Order
+└── shared/            # Shared domain types, errors
+```
+
+**Advantages:** Stronger encapsulation — unexported types within a package prevent callers from bypassing architecture layers. A handler cannot call a repository directly because the struct is unexported outside the package.
+
+**Trade-off:** Harder to navigate when you want to see "all repositories" at a glance. Go's package system enforces visibility boundaries, so the compiler blocks violations automatically.
+
+**Recommendation:** Start with package-by-layer (this skill's default). Migrate to package-by-component when you have 3+ aggregate roots and find developers bypassing the dependency rule.
 
 ---
 

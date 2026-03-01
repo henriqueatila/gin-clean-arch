@@ -2,7 +2,37 @@
 
 Testing strategies per layer for Go/Gin clean architecture. All examples use the `Product` entity.
 
-**Contents:** [Test Organization](#test-organization) · [Usecase Tests](#usecase-unit-tests) · [Handler Tests](#handler-unit-tests) · [Integration Tests](#repository-integration-tests) · [Mock Generation](#mock-generation) · [Fixtures](#test-fixtures) · [Coverage](#coverage-goals) · [Anti-Patterns](#testing-anti-patterns)
+**Contents:** [Mock Strategy](#mock-strategy) · [Test Organization](#test-organization) · [Usecase Tests](#usecase-unit-tests) · [Handler Tests](#handler-unit-tests) · [Integration Tests](#repository-integration-tests) · [Mock Generation](#mock-generation) · [Fixtures](#test-fixtures) · [Coverage](#coverage-goals) · [Anti-Patterns](#testing-anti-patterns)
+
+---
+
+## Mock Strategy
+
+**Mocks belong at system boundaries only** — not at every layer. Over-mocking creates fragile tests that break on every refactor.
+
+| Layer | Test with | Mock? | Why |
+|-------|-----------|-------|-----|
+| Domain | Pure unit tests | **Never** | Pure logic, no dependencies — test input/output directly |
+| Usecase | Unit tests | **Yes — mock repository interfaces** | Repository is an external boundary (DB) |
+| Handler | Unit tests | **Yes — mock usecase interfaces** | Usecase is the layer boundary |
+| Repository | Integration tests | **Never mock — use real DB** | Must answer "does this actually work?" |
+
+**Domain tests are pure — zero mocks:**
+```go
+func TestProduct_DeductStock(t *testing.T) {
+    p := &domain.Product{Stock: 10}
+    require.NoError(t, p.DeductStock(5))
+    assert.Equal(t, int32(5), p.Stock)
+    assert.ErrorIs(t, p.DeductStock(20), domain.ErrValidation) // insufficient
+}
+
+func TestProduct_Validate(t *testing.T) {
+    assert.Error(t, (&domain.Product{Name: "", Price: 0}).Validate())
+    assert.NoError(t, (&domain.Product{Name: "Widget", Price: 999, Stock: 5}).Validate())
+}
+```
+
+**What to mock:** Only interfaces that represent external system boundaries (`ProductRepository`, third-party API clients). If you find yourself mocking something that isn't a boundary interface, your architecture has a leak.
 
 ---
 
@@ -288,7 +318,9 @@ go tool cover -func=coverage.out | grep total | awk '{if ($3+0 < 80) exit 1}'
 
 | Anti-pattern | Fix |
 |---|---|
-| Mocking stdlib types (`*sql.DB`, `io.Reader`) | Mock only layer-boundary interfaces |
+| Mocking stdlib types (`*sql.DB`, `io.Reader`) | Mock only boundary interfaces (Repository, API client) |
+| Mocking domain logic | Domain is pure — test with real inputs, zero mocks |
+| Mocking repository in integration tests | Use real DB (testcontainers) — must prove it works |
 | Sharing mutable fixtures across sub-tests | Fresh fixture per `t.Run` |
 | `t.Skip()` on integration tests locally | Gate with `-tags integration`; run in CI |
 | Asserting on unexported struct fields | Assert on returned value or HTTP response body |

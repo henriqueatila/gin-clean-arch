@@ -26,6 +26,7 @@ Build Go/Gin APIs with strict layer separation, dependency injection, and testab
 3. **Dependency Rule.** Source depends inward only. Delivery→UseCases→Entities. Entities know nothing outside.
 4. **Separate Request/Response from Domain.** Never pass Gin request structs or DB models to UseCases. Map to plain DTOs.
 5. **`main.go` is the only dirty component.** DI wiring exclusively in `cmd/api/main.go` — the only file that knows the entire system.
+6. **Export interfaces, hide implementations.** Concrete structs are unexported (`productUsecase`, `postgresProductRepo`). Constructors return the domain interface. This prevents direct instantiation and enforces the dependency rule at the compiler level.
 
 ## Project Structure
 
@@ -44,20 +45,7 @@ myapp/
 
 ## The 4 Layers
 
-```
-┌─────────────────────────────────────────┐
-│           Delivery (HTTP/Gin)           │  ← outermost
-│  ┌─────────────────────────────────┐    │
-│  │         Repository (DB)         │    │
-│  │  ┌─────────────────────────┐    │    │
-│  │  │     Usecase (Logic)     │    │    │
-│  │  │  ┌─────────────────┐    │    │    │
-│  │  │  │  Domain (Core)  │    │    │    │
-│  │  │  └─────────────────┘    │    │    │
-│  │  └─────────────────────────┘    │    │
-│  └─────────────────────────────────┘    │
-└─────────────────────────────────────────┘
-```
+`Delivery (outermost) → Repository → Usecase → Domain (innermost)`
 
 | Layer | Package | Can Import | Never Imports |
 |-------|---------|------------|---------------|
@@ -470,14 +458,14 @@ Binding tags validate structure but **do not sanitize content**. Sanitize free-t
 
 ## Reference Files
 
-- **[references/layer-separation.md](references/layer-separation.md)** — Layer responsibilities, dependency rule enforcement
+- **[references/layer-separation.md](references/layer-separation.md)** — Layer responsibilities, package-by-component, model duplication pragmatism
 - **[references/layer-separation-antipatterns.md](references/layer-separation-antipatterns.md)** — Anti-patterns (bad→good), migration guide
 - **[references/dependency-injection.md](references/dependency-injection.md)** — Manual DI, DI container pattern, testing with DI
 - **[references/dependency-injection-alternatives.md](references/dependency-injection-alternatives.md)** — Scaling DI, Wire/Fx alternatives
 - **[references/repository-pattern.md](references/repository-pattern.md)** — SQLC, GORM, transactions, query patterns
 - **[references/error-handling.md](references/error-handling.md)** — Domain errors, propagation, HTTP mapping, validation errors
 - **[references/input-sanitization.md](references/input-sanitization.md)** — Sanitize untrusted strings at delivery boundary
-- **[references/testing-by-layer.md](references/testing-by-layer.md)** — Mock-per-layer, testcontainers, table-driven tests, coverage
+- **[references/testing-by-layer.md](references/testing-by-layer.md)** — Mock strategy (boundaries only), testcontainers, table-driven tests, coverage
 - **[references/project-scaffolding.md](references/project-scaffolding.md)** — From-scratch setup, Makefile, configuration, graceful shutdown
 
 ## Production Checklist
