@@ -77,7 +77,7 @@ myapp/
 | Domain | `internal/domain` | stdlib only | usecase, repository, delivery |
 | Usecase | `internal/usecase` | domain | repository, delivery, gin |
 | Repository | `internal/repository` | domain | delivery, gin |
-| Delivery | `internal/delivery/http` | domain, usecase | repository (via interface) |
+| Delivery | `internal/delivery/http` | domain | repository, usecase (concrete) |
 
 ## Layer 1: Domain (Entities + Interfaces)
 
@@ -298,6 +298,23 @@ type createProductRequest struct {
     Stock       int32  `json:"stock"       binding:"min=0"`
 }
 
+type productResponse struct {
+    ID          string `json:"id"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+    PriceCents  int64  `json:"price_cents"`
+    Stock       int32  `json:"stock"`
+    CreatedAt   string `json:"created_at"`
+}
+
+func toProductResponse(p *domain.Product) productResponse {
+    return productResponse{
+        ID: p.ID.String(), Name: p.Name, Description: p.Description,
+        PriceCents: p.Price, Stock: p.Stock,
+        CreatedAt: p.CreatedAt.Format(time.RFC3339),
+    }
+}
+
 func (h *ProductHandler) Create(c *gin.Context) {
     var req createProductRequest
     if err := c.ShouldBindJSON(&req); err != nil {
@@ -316,7 +333,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusCreated, product)
+    c.JSON(http.StatusCreated, toProductResponse(product))
 }
 
 func RegisterProductRoutes(rg *gin.RouterGroup, h *ProductHandler) {
@@ -360,20 +377,12 @@ import (
 
 func main() {
     logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
     cfg, err := config.Load()
-    if err != nil {
-        logger.Error("failed to load config", "error", err)
-        os.Exit(1)
-    }
+    if err != nil { logger.Error("load config", "error", err); os.Exit(1) }
 
     db, err := sql.Open("postgres", cfg.DatabaseURL)
-    if err != nil {
-        logger.Error("failed to connect to database", "error", err)
-        os.Exit(1)
-    }
+    if err != nil { logger.Error("open db", "error", err); os.Exit(1) }
     defer db.Close()
-
     db.SetMaxOpenConns(25)
     db.SetMaxIdleConns(10)
     db.SetConnMaxLifetime(5 * time.Minute)
@@ -383,33 +392,23 @@ func main() {
     productUC := usecase.NewProductUsecase(productRepo)
     productHandler := delivery.NewProductHandler(productUC, logger)
 
-    // Gin setup
     r := gin.New()
     r.Use(gin.Recovery())
+    delivery.RegisterProductRoutes(r.Group("/api/v1"), productHandler)
 
-    api := r.Group("/api/v1")
-    delivery.RegisterProductRoutes(api, productHandler)
-
-    // Graceful shutdown
     srv := &http.Server{Addr: cfg.Port, Handler: r}
-
     go func() {
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            logger.Error("server error", "error", err)
-            os.Exit(1)
+            logger.Error("server error", "error", err); os.Exit(1)
         }
     }()
 
     quit := make(chan os.Signal, 1)
     signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
     <-quit
-
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-
-    if err := srv.Shutdown(ctx); err != nil {
-        logger.Error("shutdown error", "error", err)
-    }
+    if err := srv.Shutdown(ctx); err != nil { logger.Error("shutdown", "error", err) }
 }
 ```
 

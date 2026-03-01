@@ -17,46 +17,36 @@ Quick overview: [SKILL.md](../SKILL.md).
 
 ## 1. Domain Error Types
 
-All error types in `internal/domain/errors.go`. Stdlib only — no framework imports.
+All error types in `internal/domain/errors.go`. Stdlib only — no framework imports, no `encoding/json`.
 
 ```go
 // internal/domain/errors.go
 package domain
 
-import ("encoding/json"; "fmt")
-
 type AppError struct {
-    Code    int    // intended HTTP status — not in JSON directly
+    Code    int
     Message string
-    Detail  string // optional context (field name, resource ID)
 }
 
-func (e *AppError) Error() string {
-    if e.Detail != "" { return fmt.Sprintf("%s: %s", e.Message, e.Detail) }
-    return e.Message
-}
-func (e *AppError) MarshalJSON() ([]byte, error) {
-    type j struct {
-        Error  string `json:"error"`
-        Detail string `json:"detail,omitempty"`
-    }
-    return json.Marshal(j{Error: e.Message, Detail: e.Detail})
-}
-func NewDomainError(base *AppError, detail string) *AppError {
-    return &AppError{Code: base.Code, Message: base.Message, Detail: detail}
-}
+func (e *AppError) Error() string { return e.Message }
 
 var (
     ErrNotFound   = &AppError{Code: 404, Message: "not found"}
     ErrConflict   = &AppError{Code: 409, Message: "already exists"}
-    ErrForbidden  = &AppError{Code: 403, Message: "forbidden"}
     ErrValidation = &AppError{Code: 422, Message: "validation failed"}
-    ErrInternal   = &AppError{Code: 500, Message: "internal server error"}
+    ErrForbidden  = &AppError{Code: 403, Message: "forbidden"}
 )
 ```
 
 Check errors: `errors.As(err, &appErr)` to extract; `errors.Is(err, domain.ErrNotFound)` for sentinel identity.
 Anti-pattern: `if err.Error() == "not found"` (breaks with wrapping).
+
+**Adding detail to errors** — use `fmt.Errorf` to wrap the sentinel with context. Detail stays in the error chain, not in the struct:
+
+```go
+// In usecase — adds context without changing AppError struct
+return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation)
+```
 
 ---
 
@@ -95,7 +85,7 @@ func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*doma
         `SELECT id, name, description, price, stock, created_at, updated_at FROM products WHERE id = $1`, id,
     ).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Stock, &p.CreatedAt, &p.UpdatedAt)
     if errors.Is(err, sql.ErrNoRows) { return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound) }
-    if err != nil { return nil, fmt.Errorf("query product: %w", domain.ErrInternal) }
+    if err != nil { return nil, fmt.Errorf("query product: %w", err) }
     return &p, nil
 }
 func (r *postgresProductRepo) Create(ctx context.Context, p *domain.Product) error {
@@ -116,7 +106,7 @@ func wrapDBError(op string, err error) error {
         }
     }
     if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "timeout") {
-        return fmt.Errorf("%s: %w", op, domain.ErrInternal)
+        return fmt.Errorf("%s: db unavailable: %w", op, err)
     }
     return fmt.Errorf("%s: %w", op, err)
 }
@@ -146,7 +136,7 @@ func (u *productUsecase) GetProduct(ctx context.Context, id uuid.UUID) (*domain.
 }
 func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
     if input.Price <= 0 {
-        return nil, domain.NewDomainError(domain.ErrValidation, "price must be greater than zero")
+        return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation)
     }
     p := &domain.Product{ID: uuid.New(), Name: input.Name, Description: input.Description,
         Price: input.Price, Stock: input.Stock, CreatedAt: time.Now(), UpdatedAt: time.Now()}
@@ -158,7 +148,7 @@ func (u *productUsecase) UpdateProduct(ctx context.Context, id uuid.UUID, input 
     if err != nil { return nil, fmt.Errorf("update product: %w", err) }
     if input.Name != nil { p.Name = *input.Name }
     if input.Price != nil {
-        if *input.Price <= 0 { return nil, domain.NewDomainError(domain.ErrValidation, "price must be greater than zero") }
+        if *input.Price <= 0 { return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation) }
         p.Price = *input.Price
     }
     if input.Stock != nil { p.Stock = *input.Stock }
@@ -194,7 +184,7 @@ func ErrorMiddleware(logger *slog.Logger) gin.HandlerFunc {
             } else {
                 logger.WarnContext(c.Request.Context(), "client error", "status", appErr.Code, "error", err, "path", c.Request.URL.Path)
             }
-            c.JSON(appErr.Code, appErr) // AppError.MarshalJSON formats {"error":..., "detail":...}
+            c.JSON(appErr.Code, gin.H{"error": appErr.Message})
             return
         }
         logger.ErrorContext(c.Request.Context(), "unhandled error", "error", err)
@@ -207,7 +197,7 @@ func ErrorMiddleware(logger *slog.Logger) gin.HandlerFunc {
 ```go
 func (h *ProductHandler) GetByID(c *gin.Context) {
     id, err := uuid.Parse(c.Param("id"))
-    if err != nil { _ = c.Error(domain.NewDomainError(domain.ErrValidation, "invalid product ID")); return }
+    if err != nil { _ = c.Error(fmt.Errorf("invalid product ID: %w", domain.ErrValidation)); return }
     product, err := h.uc.GetProduct(c.Request.Context(), id)
     if err != nil { _ = c.Error(err); return }
     c.JSON(http.StatusOK, product)
@@ -246,7 +236,7 @@ func formatBindError(err error) *domain.AppError {
         for i, fe := range ve { fields[i] = fe.Field() + ": " + fe.Tag() }
         return &domain.AppError{Code: 422, Message: "validation failed", Detail: strings.Join(fields, "; ")}
     }
-    return domain.NewDomainError(domain.ErrValidation, err.Error())
+    return &domain.AppError{Code: 422, Message: "validation failed: " + err.Error()}
 }
 ```
 

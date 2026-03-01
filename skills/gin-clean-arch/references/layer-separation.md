@@ -48,7 +48,7 @@ Companion: [layer-separation-antipatterns.md](layer-separation-antipatterns.md) 
 | Domain | `internal/domain` | stdlib only | all internal pkgs |
 | Usecase | `internal/usecase` | `domain` | `repository`, `delivery`, `gin` |
 | Repository | `internal/repository` | `domain`, `database/sql` | `delivery`, `gin` |
-| Delivery | `internal/delivery/http` | `domain`, `usecase` | `repository` directly |
+| Delivery | `internal/delivery/http` | `domain` | `repository`, `usecase` (concrete) |
 
 ---
 
