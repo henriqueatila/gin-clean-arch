@@ -239,7 +239,7 @@ func formatBindError(err error) *domain.AppError {
         for i, fe := range ve { fields[i] = fe.Field() + ": " + fe.Tag() }
         return &domain.AppError{Code: 422, Message: "validation failed", Detail: strings.Join(fields, "; ")}
     }
-    return &domain.AppError{Code: 422, Message: "validation failed: " + err.Error()}
+    return &domain.AppError{Code: 422, Message: "validation failed"}
 }
 ```
 

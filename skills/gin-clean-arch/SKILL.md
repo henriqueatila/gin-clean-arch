@@ -314,7 +314,7 @@ func toProductResponse(p *domain.Product) productResponse {
 func (h *ProductHandler) Create(c *gin.Context) {
     var req createProductRequest
     if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "validation failed"})
         return
     }
 

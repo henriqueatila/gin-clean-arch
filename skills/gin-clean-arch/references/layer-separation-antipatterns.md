@@ -12,10 +12,11 @@ Companion file: [layer-separation.md](layer-separation.md) — dependency rule, 
 
 ```go
 // BAD — price floor is a business rule; it belongs in the usecase
+// Also BAD: err.Error() leaks internal struct names to the client
 func (h *ProductHandler) Create(c *gin.Context) {
     var req createProductRequest
     if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}) // never expose raw errors
         return
     }
     if req.Price < 100 { // business rule leaking into delivery layer

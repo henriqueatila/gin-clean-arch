@@ -118,8 +118,8 @@ Separate model with GORM tags; map to/from domain. Never annotate the domain str
 // internal/repository/product_repository_gorm.go
 package repository
 
-import ("context"; "errors"; "fmt"; "strings"; "time"
-    "github.com/google/uuid"; "gorm.io/gorm"; "myapp/internal/domain")
+import ("context"; "errors"; "fmt"; "time"
+    "github.com/google/uuid"; "github.com/lib/pq"; "gorm.io/gorm"; "myapp/internal/domain")
 
 type productModel struct {
     ID uuid.UUID `gorm:"type:uuid;primaryKey"`; Name string `gorm:"not null"`
@@ -148,7 +148,10 @@ func (r *gormProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.P
 func (r *gormProductRepo) Create(ctx context.Context, p *domain.Product) error {
     m := toModel(p)
     if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-        if strings.Contains(err.Error(), "duplicate key") { return fmt.Errorf("product %q: %w", p.Name, domain.ErrConflict) }
+        var pqErr *pq.Error
+        if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+            return fmt.Errorf("product %q: %w", p.Name, domain.ErrConflict)
+        }
         return fmt.Errorf("insert product: %w", err)
     }
     return nil
