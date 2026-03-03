@@ -9,7 +9,7 @@ metadata:
 
 # golang-gin-clean-arch — Clean Architecture for Go/Gin
 
-Build Go/Gin APIs with strict layer separation, dependency injection, and testable structure. Covers the 80% of clean architecture patterns you need daily. Works standalone; enhanced with **gin-best-practices** for Gin-specific patterns.
+Build Go/Gin APIs with strict layer separation, dependency injection, and testable structure. Covers the 80% of clean architecture patterns you need daily. Works standalone; enhanced with **golang-gin-best-practices** for Gin-specific patterns.
 
 ## When to Use
 
@@ -477,19 +477,19 @@ Binding tags validate structure but **do not sanitize content**. Sanitize free-t
 
 ## Production Checklist
 
-This skill covers architecture and code-level security. For production deployment, combine with **gin-best-practices**:
+This skill covers architecture and code-level security. For production deployment, combine with **golang-gin-best-practices**:
 
-- [ ] Rate limiting + CORS middleware → **gin-api** (`references/middleware.md`)
-- [ ] JWT auth + RBAC → **gin-auth** (`references/jwt-patterns.md`)
-- [ ] Request ID + timeout middleware → **gin-api** (`references/middleware.md`)
-- [ ] Health check with DB ping → **gin-deploy** (`references/kubernetes.md`)
-- [ ] Multi-stage Dockerfile (distroless) → **gin-deploy** (`references/dockerfile.md`)
-- [ ] OpenTelemetry tracing → **gin-deploy**
+- [ ] Rate limiting + CORS middleware → **golang-gin-api** (`references/middleware.md`)
+- [ ] JWT auth + RBAC → **golang-gin-auth** (`references/jwt-patterns.md`)
+- [ ] Request ID + timeout middleware → **golang-gin-api** (`references/middleware.md`)
+- [ ] Health check with DB ping → **golang-gin-deploy** (`references/kubernetes.md`)
+- [ ] Multi-stage Dockerfile (distroless) → **golang-gin-deploy** (`references/dockerfile.md`)
+- [ ] OpenTelemetry tracing → **golang-gin-deploy**
 
-## Cross-Skill References (gin-best-practices)
+## Cross-Skill References (golang-gin-best-practices)
 
-- **gin-api** → Delivery: `ShouldBind*` variants, custom validators, file uploads, CORS/rate-limit, request ID middleware
-- **gin-auth** → Delivery: JWT middleware, token refresh/blacklist, RBAC with `RequireRole`
-- **gin-database** → Repository: GORM associations/hooks/soft-deletes, sqlx, golang-migrate
-- **gin-testing** → All layers: `httptest`, table-driven handler tests, testcontainers, e2e with docker-compose
-- **gin-deploy** → Infra: Dockerfile (distroless), docker-compose + Air, Kubernetes manifests, OpenTelemetry
+- **golang-gin-api** → Delivery: `ShouldBind*` variants, custom validators, file uploads, CORS/rate-limit, request ID middleware
+- **golang-gin-auth** → Delivery: JWT middleware, token refresh/blacklist, RBAC with `RequireRole`
+- **golang-gin-database** → Repository: GORM associations/hooks/soft-deletes, sqlx, golang-migrate
+- **golang-gin-testing** → All layers: `httptest`, table-driven handler tests, testcontainers, e2e with docker-compose
+- **golang-gin-deploy** → Infra: Dockerfile (distroless), docker-compose + Air, Kubernetes manifests, OpenTelemetry

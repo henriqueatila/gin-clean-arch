@@ -290,4 +290,4 @@ Use `gin.New()` (not `gin.Default()`) — `gin.Default()` adds its own plaintext
 - **[repository-pattern.md](repository-pattern.md)** — DB error wrapping (SQLC, GORM)
 - **[testing-by-layer.md](testing-by-layer.md)** — testing error paths, mock error injection
 - **[layer-separation.md](layer-separation.md)** — why errors must not cross layer boundaries raw
-- **gin-api** skill — `ShouldBind*` variants, header parsing, request lifecycle
+- **golang-gin-api** skill — `ShouldBind*` variants, header parsing, request lifecycle

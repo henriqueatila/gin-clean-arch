@@ -184,7 +184,7 @@ func (r *gormProductRepo) FindAll(ctx context.Context, f domain.ProductFilter) (
 }
 ```
 
-> For associations, hooks, soft-deletes — see the **gin-database** skill.
+> For associations, hooks, soft-deletes — see the **golang-gin-database** skill.
 
 ---
 
@@ -322,4 +322,4 @@ Run: `go test -tags=integration ./internal/repository/...`
 - **[error-handling.md](error-handling.md)** — repo error propagation to HTTP
 - **[testing-by-layer.md](testing-by-layer.md)** — full mock patterns and coverage goals
 - **[dependency-injection.md](dependency-injection.md)** — wiring repositories into usecases
-- **gin-database** skill — GORM associations, migrations, sqlx
+- **golang-gin-database** skill — GORM associations, migrations, sqlx

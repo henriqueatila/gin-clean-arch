@@ -55,4 +55,4 @@ product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInpu
 
 - **[error-handling.md](error-handling.md)** — Validation error formatting
 - **[layer-separation.md](layer-separation.md)** — Why sanitization lives in delivery, not domain
-- **gin-api** skill — `ShouldBind*` variants, custom validators, file upload sanitization
+- **golang-gin-api** skill — `ShouldBind*` variants, custom validators, file upload sanitization

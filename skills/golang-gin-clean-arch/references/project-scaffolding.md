@@ -165,7 +165,7 @@ func NewRouter(productUC domain.ProductUsecase, logger *slog.Logger) *gin.Engine
 		c.Next()
 	})
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
-	// CORS + rate limiting: see gin-api skill
+	// CORS + rate limiting: see golang-gin-api skill
 	RegisterProductRoutes(r.Group("/api/v1"), NewProductHandler(productUC, logger))
 	return r
 }
