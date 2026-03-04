@@ -1,0 +1,3345 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+docs/
+  SPECIFICATION.md
+skills/
+  golang-gin-clean-arch/
+    references/
+      dependency-injection-alternatives.md
+      dependency-injection.md
+      error-handling.md
+      input-sanitization.md
+      layer-separation-antipatterns.md
+      layer-separation.md
+      project-scaffolding.md
+      repository-pattern.md
+      testing-by-layer.md
+    metadata.json
+    README.md
+    SKILL.md
+  golang-gin-clean-arch.zip
+.gitignore
+AGENTS.md
+CLAUDE.md
+LICENSE
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="skills/golang-gin-clean-arch/README.md">
+# golang-gin-clean-arch
+
+Clean Architecture patterns for Go Gin APIs.
+
+## What's Included
+
+- **SKILL.md** — 6 golden rules, 4-layer overview, DI bootstrap, error flow, project structure
+- **references/layer-separation.md** — Layer responsibilities, dependency rule enforcement
+- **references/layer-separation-antipatterns.md** — Anti-patterns (bad→good), migration guide
+- **references/dependency-injection.md** — Manual DI, DI container pattern, testing with DI
+- **references/dependency-injection-alternatives.md** — Scaling DI, Wire/Fx alternatives
+- **references/repository-pattern.md** — SQLC, GORM, transactions, query patterns
+- **references/error-handling.md** — Domain errors, propagation, HTTP mapping
+- **references/testing-by-layer.md** — Mock-per-layer, testcontainers, coverage goals
+- **references/project-scaffolding.md** — From-scratch setup, Makefile, configuration
+
+## Categories
+
+`go` `gin` `clean-architecture` `dependency-injection` `repository-pattern` `testing`
+
+## Install
+
+```bash
+npx skills add henriqueatila/golang-gin-clean-arch --skill golang-gin-clean-arch
+```
+</file>
+
+<file path="docs/SPECIFICATION.md">
+# SPECIFICATION.md
+
+Content requirements and quality checklist for the `golang-gin-clean-arch` skill.
+
+## Shared Domain Model
+
+All examples use the `Product` entity — **not** `User` (which is used by gin-best-practices). This intentional differentiation avoids confusion when both skills are installed.
+
+### Product Entity
+
+```go
+type Product struct {
+    ID          uuid.UUID
+    Name        string
+    Description string
+    Price       int64  // cents
+    Stock       int32
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+```
+
+### Product Interfaces
+
+```go
+type ProductRepository interface {
+    FindByID(ctx context.Context, id uuid.UUID) (*Product, error)
+    FindAll(ctx context.Context, filter ProductFilter) ([]Product, error)
+    Create(ctx context.Context, p *Product) error
+    Update(ctx context.Context, p *Product) error
+    Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type ProductUsecase interface {
+    GetProduct(ctx context.Context, id uuid.UUID) (*Product, error)
+    ListProducts(ctx context.Context, filter ProductFilter) ([]Product, error)
+    CreateProduct(ctx context.Context, input CreateProductInput) (*Product, error)
+    UpdateProduct(ctx context.Context, id uuid.UUID, input UpdateProductInput) (*Product, error)
+    DeleteProduct(ctx context.Context, id uuid.UUID) error
+}
+```
+
+## Content Requirements
+
+1. **All code must compile** — no pseudo-code, no `...` placeholders in function bodies
+2. **All errors handled** — no `_` for error values
+3. **Context propagated** — `context.Context` passed through all layers
+4. **Structured logging** — `log/slog` only (no `fmt.Println`, `log.Println`)
+5. **Gin conventions** — `ShouldBind*`, `gin.New()`, `c.Copy()` for goroutines
+6. **Go 1.24+** — use stdlib features (`errors.As`, `log/slog`)
+
+## Quality Checklist
+
+- [ ] Layer boundaries respected (no Gin imports in usecase/domain)
+- [ ] DI via constructors (no global state, no init())
+- [ ] No business logic in HTTP handlers
+- [ ] Interfaces defined in domain layer, implemented in outer layers
+- [ ] Error types defined in domain, mapped to HTTP in delivery layer
+- [ ] `Product` entity used (not `User`)
+- [ ] SKILL.md under 500 lines
+- [ ] Each reference file under 300 lines
+- [ ] TOC added if reference file exceeds 200 lines
+
+## Reference File Guidelines
+
+- Each reference file focuses on one topic
+- Include compilable code examples
+- Show anti-patterns with corrections when relevant
+- Cross-reference gin-best-practices by skill name (not file paths)
+- End with "See also" section linking related references
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/dependency-injection-alternatives.md">
+# Dependency Injection — Scaling, Alternatives, and Common Mistakes
+
+When to scale beyond manual DI, Google Wire and Uber Fx alternatives, and mistakes to avoid.
+
+Companion file: [dependency-injection.md](dependency-injection.md) — manual DI, constructor patterns, testing.
+
+---
+
+## Scaling DI
+
+Choose the DI approach based on project size and team familiarity.
+
+| Size | Usecases | Approach | Where wiring lives |
+|------|----------|----------|--------------------|
+| Small | 1–4 | Flat variables in `main.go` | `cmd/api/main.go` |
+| Medium | 5–12 | `Dependencies` struct + `RegisterRoutes` | `cmd/api/main.go` |
+| Large | 13+ | Sub-containers per domain or Wire/Fx | Multiple `wire.go` files |
+
+### Decision Criteria
+
+- Fewer than 5 usecases: flat manual DI — no ceremony needed.
+- 5–12 usecases: `Dependencies` struct keeps `main.go` readable without adding a framework.
+- More than 12 usecases or multiple bounded contexts: evaluate Wire (compile-time) or Fx (runtime) to eliminate repetitive boilerplate.
+- Shared dependencies (logger, db, config): always pass explicitly to each constructor — never via global variable.
+
+---
+
+## Alternative: Google Wire
+
+Wire is a compile-time DI code generator from Google. It reads constructor signatures and generates the wiring glue in `wire_gen.go`.
+
+### Minimal Wire Example
+
+```go
+// cmd/api/wire.go
+// The wireinject build tag prevents this file from being compiled normally.
+//go:build wireinject
+
+package main
+
+import (
+    "database/sql"
+    "log/slog"
+
+    "github.com/google/wire"
+    delivery "myapp/internal/delivery/http"
+    "myapp/internal/repository"
+    "myapp/internal/usecase"
+)
+
+// InitializeProductHandler is the Wire injector function.
+// Wire reads the wire.Build call and generates the full body in wire_gen.go.
+func InitializeProductHandler(db *sql.DB, logger *slog.Logger) (*delivery.ProductHandler, error) {
+    wire.Build(
+        repository.NewProductRepository, // *sql.DB → domain.ProductRepository
+        usecase.NewProductUsecase,        // domain.ProductRepository → domain.ProductUsecase
+        delivery.NewProductHandler,       // domain.ProductUsecase, *slog.Logger → *ProductHandler
+    )
+    return nil, nil // Wire replaces this body at generation time
+}
+```
+
+Run `wire ./cmd/api/` to generate `wire_gen.go`. Commit the generated file — it is plain, readable Go.
+
+### Wire Pros and Cons
+
+| Pros | Cons |
+|------|------|
+| Compile-time safety — missing deps are build errors | Requires `wire` CLI installed and a generation step |
+| Eliminates boilerplate at scale (15+ constructors) | Generated code can be disorienting to debug |
+| Provider sets group domain wiring cleanly | `//go:build wireinject` tag is easy to forget |
+| Works naturally with interfaces | Learning curve for teams new to code generation |
+
+**Use Wire when:** the manual wiring block in `main.go` has grown past ~30 lines and expanding it with each new aggregate feels like maintenance risk.
+
+---
+
+## Alternative: Uber Fx
+
+Fx is a runtime DI framework from Uber. Dependencies are registered via `fx.Provide` and resolved by reflection when the application starts.
+
+### Minimal Fx Example
+
+```go
+// cmd/api/main.go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "log/slog"
+    "net/http"
+    "os"
+
+    "github.com/gin-gonic/gin"
+    _ "github.com/lib/pq"
+    "go.uber.org/fx"
+
+    delivery "myapp/internal/delivery/http"
+    "myapp/internal/repository"
+    "myapp/internal/usecase"
+)
+
+func main() {
+    app := fx.New(
+        fx.Provide(
+            newLogger,
+            openDatabase,
+            repository.NewProductRepository, // db → domain.ProductRepository
+            usecase.NewProductUsecase,        // domain.ProductRepository → domain.ProductUsecase
+            delivery.NewProductHandler,       // domain.ProductUsecase, *slog.Logger → *ProductHandler
+        ),
+        fx.Invoke(registerServer),
+    )
+    app.Run()
+}
+
+func newLogger() *slog.Logger {
+    return slog.New(slog.NewJSONHandler(os.Stdout, nil))
+}
+
+func openDatabase() (*sql.DB, error) {
+    db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+    if err != nil {
+        return nil, err
+    }
+    return db, nil
+}
+
+func newRouter(handler *delivery.ProductHandler) *gin.Engine {
+    r := gin.New()
+    r.Use(gin.Recovery())
+    delivery.RegisterProductRoutes(r.Group("/api/v1"), handler)
+    return r
+}
+
+func registerServer(handler *delivery.ProductHandler, logger *slog.Logger, lc fx.Lifecycle) {
+    r := newRouter(handler)
+    srv := &http.Server{Addr: ":8080", Handler: r}
+
+    lc.Append(fx.Hook{
+        OnStart: func(ctx context.Context) error {
+            logger.Info("server starting", "addr", srv.Addr)
+            go func() {
+                if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+                    logger.Error("server error", "error", err)
+                }
+            }()
+            return nil
+        },
+        OnStop: func(ctx context.Context) error {
+            logger.Info("server stopping")
+            return srv.Shutdown(ctx)
+        },
+    })
+}
+```
+
+### Fx Pros and Cons
+
+| Pros | Cons |
+|------|------|
+| Lifecycle hooks (OnStart/OnStop) built in | Runtime errors — missing deps crash at startup, not compile time |
+| `fx.Option` modules group domain wiring cleanly | Reflection makes IDE navigation and stack traces harder |
+| Handles graceful shutdown for all components | Heavy dependency; adds meaningful complexity |
+| Scales well for microservices with many components | Interface resolution is implicit and can surprise |
+
+**Use Fx when:** the application has complex lifecycle needs — multiple HTTP servers, background workers, message consumers — and the team accepts the reflection trade-off.
+
+---
+
+## Common Mistakes
+
+### Injecting Concrete Types
+
+```go
+// BAD — caller is coupled to a struct; cannot substitute a mock
+func NewProductHandler(repo *repository.PostgresProductRepository) *ProductHandler { ... }
+
+// GOOD — caller depends on the domain interface only
+func NewProductHandler(uc domain.ProductUsecase, logger *slog.Logger) *ProductHandler { ... }
+```
+
+### Circular Dependencies
+
+```go
+// BAD — A needs B, B needs A; will not compile
+func NewA(b *B) *A { ... }
+func NewB(a *A) *B { ... }
+
+// GOOD — extract shared behaviour into C; both A and B depend on C
+func NewC() *C     { ... }
+func NewA(c *C) *A { ... }
+func NewB(c *C) *B { ... }
+```
+
+### Global State as a DI Shortcut
+
+```go
+// BAD — global variables are hidden dependencies; parallel tests corrupt each other
+var DB     *sql.DB
+var Logger *slog.Logger
+
+func init() {
+    DB, _ = sql.Open("postgres", os.Getenv("DATABASE_URL"))
+    Logger = slog.Default()
+}
+
+// GOOD — pass all dependencies explicitly through constructors
+func NewProductRepository(db *sql.DB) domain.ProductRepository { ... }
+func NewProductHandler(uc domain.ProductUsecase, logger *slog.Logger) *ProductHandler { ... }
+```
+
+### Over-Abstracting Early
+
+```go
+// BAD — a custom DI container for a 3-usecase app adds zero value
+type Container struct {
+    mu    sync.Mutex
+    cache map[string]any
+}
+
+func (c *Container) Resolve(name string) any { ... }
+
+// GOOD — three lines of manual wiring are always clearer than reflection magic
+productRepo    := repository.NewProductRepository(db)
+productUC      := usecase.NewProductUsecase(productRepo)
+productHandler := delivery.NewProductHandler(productUC, logger)
+```
+
+---
+
+## See Also
+
+- [dependency-injection.md](dependency-injection.md) — Manual DI, constructor patterns, testing with mocks
+- [layer-separation.md](layer-separation.md) — Why interfaces live in domain, not outer layers
+- [project-scaffolding.md](project-scaffolding.md) — Complete `main.go` with config loading and graceful shutdown
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/dependency-injection.md">
+# Dependency Injection — Manual DI and Constructor Patterns
+
+Manual constructor wiring, the DI container pattern, constructor variants, and testing with DI.
+
+Companion: [dependency-injection-alternatives.md](dependency-injection-alternatives.md) — scaling, Wire, Fx, common mistakes.
+
+## Table of Contents
+
+1. [Manual DI — The Recommended Approach](#manual-di--the-recommended-approach)
+2. [DI Container Pattern](#di-container-pattern)
+3. [Constructor Patterns](#constructor-patterns)
+4. [Testing with DI](#testing-with-di)
+
+---
+
+## Manual DI — The Recommended Approach
+
+Wire all dependencies by hand in `main.go`. No code generation, no reflection. Every dependency is explicit and visible.
+
+| Property | Manual DI | Wire/Fx |
+|----------|-----------|---------|
+| Readable at a glance | Yes | Requires learning tool |
+| Compile-time safety | Yes | Yes (Wire) / No (Fx) |
+| Debuggable step-by-step | Yes | Harder |
+| Suitable for | All sizes | Large codebases |
+
+### Constructor Rule — Return Interface, Not Struct
+
+```go
+// CORRECT — callers receive the domain interface; can be swapped for a mock
+func NewProductRepository(db *sql.DB) domain.ProductRepository {
+    return &postgresProductRepo{db: db}
+}
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+
+// WRONG — concrete return type leaks the implementation; mocking breaks
+func NewProductRepository(db *sql.DB) *postgresProductRepo { ... }
+```
+
+### Bootstrap Order
+
+```
+config → database → repository → usecase → handler → router → server
+```
+
+Each step depends only on the step above. Concrete types appear **only** in `main.go`.
+
+```go
+// cmd/api/main.go — wiring section (full server in project-scaffolding.md)
+package main
+
+import (
+    "context"
+    "database/sql"
+    "log/slog"
+    "os"
+
+    _ "github.com/lib/pq"
+    "myapp/config"
+    delivery "myapp/internal/delivery/http"
+    "myapp/internal/repository"
+    "myapp/internal/usecase"
+)
+
+func main() {
+    logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+    cfg, err := config.Load()
+    if err != nil {
+        logger.Error("failed to load config", "error", err)
+        os.Exit(1)
+    }
+    db, err := sql.Open("postgres", cfg.DatabaseURL)
+    if err != nil {
+        logger.Error("failed to open database", "error", err)
+        os.Exit(1)
+    }
+    defer func() {
+        if err := db.Close(); err != nil {
+            logger.Error("close db", "error", err)
+        }
+    }()
+    if err := db.PingContext(context.Background()); err != nil {
+        logger.Error("ping database", "error", err)
+        os.Exit(1)
+    }
+
+    // Concrete types appear here and nowhere else.
+    productRepo    := repository.NewProductRepository(db)    // → domain.ProductRepository
+    productUC      := usecase.NewProductUsecase(productRepo) // → domain.ProductUsecase
+    productHandler := delivery.NewProductHandler(productUC, logger)
+
+    // ... gin setup + graceful shutdown — see project-scaffolding.md
+}
+```
+
+---
+
+## DI Container Pattern
+
+When the app exceeds ~5 handlers, group them into a `Dependencies` struct rather than listing individual variables.
+
+```go
+// internal/delivery/http/dependencies.go
+package http
+
+// Dependencies groups all wired handlers. Add one field per aggregate.
+type Dependencies struct {
+    Product *ProductHandler
+    // Order *OrderHandler
+}
+
+// internal/delivery/http/router.go
+func RegisterRoutes(r *gin.Engine, deps Dependencies) {
+    api := r.Group("/api/v1")
+    RegisterProductRoutes(api, deps.Product)
+    // RegisterOrderRoutes(api, deps.Order)
+}
+
+// cmd/api/main.go — wiring with container
+deps := delivery.Dependencies{
+    Product: delivery.NewProductHandler(productUC, logger),
+}
+delivery.RegisterRoutes(r, deps)
+```
+
+Switch when: more than 5 handlers, or the wiring block exceeds ~30 lines.
+
+---
+
+## Constructor Patterns
+
+All variants return interfaces. Choose the simplest that fits the need.
+
+```go
+// 1. Basic — use by default
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+
+// 2. With config — use when behaviour varies by environment
+type ProductUsecaseConfig struct {
+    DefaultPageSize int   // 0 → 20
+    MaxPageSize     int   // 0 → 100
+}
+
+func NewProductUsecaseWithConfig(repo domain.ProductRepository, cfg ProductUsecaseConfig) domain.ProductUsecase {
+    if cfg.DefaultPageSize <= 0 {
+        cfg.DefaultPageSize = 20
+    }
+    if cfg.MaxPageSize <= 0 {
+        cfg.MaxPageSize = 100
+    }
+    return &productUsecase{repo: repo, cfg: cfg}
+}
+
+// 3. With validation — use when nil args must be caught at startup
+func NewProductRepository(db *sql.DB) (domain.ProductRepository, error) {
+    if db == nil {
+        return nil, errors.New("product repository: db must not be nil")
+    }
+    return &postgresProductRepo{db: db}, nil
+}
+
+// 4. Lazy prepared statements — use for hot-path query caching only
+type postgresProductRepo struct {
+    db   *sql.DB
+    once sync.Once
+    stmt *sql.Stmt
+}
+
+func (r *postgresProductRepo) prepareStatements(ctx context.Context) error {
+    var prepErr error
+    r.once.Do(func() {
+        r.stmt, prepErr = r.db.PrepareContext(ctx,
+            `SELECT id, name, description, price, stock, created_at, updated_at
+             FROM products WHERE id = $1`)
+    })
+    return prepErr
+}
+```
+
+---
+
+## Testing with DI
+
+Swap real dependencies with mocks at the constructor call — no production code changes required.
+
+### Usecase Test — Mock Repository
+
+```go
+// internal/usecase/product_usecase_test.go
+package usecase_test
+
+import (
+    "context"
+    "errors"
+    "testing"
+
+    "github.com/google/uuid"
+    "myapp/internal/domain"
+    "myapp/internal/usecase"
+)
+
+type mockProductRepository struct {
+    createFunc func(context.Context, *domain.Product) error
+}
+
+func (m *mockProductRepository) Create(ctx context.Context, p *domain.Product) error              { return m.createFunc(ctx, p) }
+func (m *mockProductRepository) FindByID(_ context.Context, _ uuid.UUID) (*domain.Product, error) { return nil, nil }
+func (m *mockProductRepository) FindAll(_ context.Context, _ domain.ProductFilter) ([]domain.Product, error) { return nil, nil }
+func (m *mockProductRepository) Update(_ context.Context, _ *domain.Product) error { return nil }
+func (m *mockProductRepository) Delete(_ context.Context, _ uuid.UUID) error       { return nil }
+
+func TestCreateProduct_Success(t *testing.T) {
+    repo := &mockProductRepository{createFunc: func(_ context.Context, _ *domain.Product) error { return nil }}
+    got, err := usecase.NewProductUsecase(repo).CreateProduct(context.Background(),
+        domain.CreateProductInput{Name: "Widget", Price: 999, Stock: 10})
+    if err != nil { t.Fatalf("unexpected error: %v", err) }
+    if got.Name != "Widget" { t.Errorf("expected Widget, got %s", got.Name) }
+}
+
+func TestCreateProduct_InvalidPrice(t *testing.T) {
+    _, err := usecase.NewProductUsecase(&mockProductRepository{}).CreateProduct(
+        context.Background(), domain.CreateProductInput{Name: "Widget", Price: 0})
+    if !errors.Is(err, domain.ErrValidation) {
+        t.Errorf("expected ErrValidation, got %v", err)
+    }
+}
+```
+
+### Handler Test — Mock Usecase
+
+```go
+// internal/delivery/http/product_handler_test.go
+package http_test
+
+import (
+    "bytes"
+    "context"
+    "encoding/json"
+    "log/slog"
+    "net/http"
+    "net/http/httptest"
+    "testing"
+
+    "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
+    delivery "myapp/internal/delivery/http"
+    "myapp/internal/domain"
+)
+
+type mockProductUsecase struct {
+    createProductFunc func(context.Context, domain.CreateProductInput) (*domain.Product, error)
+}
+func (m *mockProductUsecase) CreateProduct(ctx context.Context, in domain.CreateProductInput) (*domain.Product, error) { return m.createProductFunc(ctx, in) }
+func (m *mockProductUsecase) GetProduct(_ context.Context, _ uuid.UUID) (*domain.Product, error)                    { return nil, nil }
+func (m *mockProductUsecase) ListProducts(_ context.Context, _ domain.ProductFilter) ([]domain.Product, error)      { return nil, nil }
+func (m *mockProductUsecase) UpdateProduct(_ context.Context, _ uuid.UUID, _ domain.UpdateProductInput) (*domain.Product, error) { return nil, nil }
+func (m *mockProductUsecase) DeleteProduct(_ context.Context, _ uuid.UUID) error                                    { return nil }
+
+func TestProductHandler_Create_Returns201(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    uc := &mockProductUsecase{
+        createProductFunc: func(_ context.Context, in domain.CreateProductInput) (*domain.Product, error) {
+            return &domain.Product{ID: uuid.New(), Name: in.Name, Price: in.Price}, nil
+        },
+    }
+    r := gin.New()
+    r.POST("/products", delivery.NewProductHandler(uc, slog.Default()).Create)
+
+    body, err := json.Marshal(map[string]any{"name": "Widget", "price": int64(999)})
+    if err != nil {
+        t.Fatalf("marshal: %v", err)
+    }
+    req := httptest.NewRequest(http.MethodPost, "/products", bytes.NewReader(body))
+    req.Header.Set("Content-Type", "application/json")
+    rec := httptest.NewRecorder()
+    r.ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusCreated {
+        t.Errorf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+    }
+}
+```
+
+Each layer tests in isolation — no running database or HTTP server needed for usecase tests.
+
+---
+
+## See Also
+
+- [dependency-injection-alternatives.md](dependency-injection-alternatives.md) — Scaling, Wire, Fx, common mistakes
+- [layer-separation.md](layer-separation.md) — Why interfaces live in domain, not outer layers
+- [testing-by-layer.md](testing-by-layer.md) — Full mock-per-layer testing patterns
+- [project-scaffolding.md](project-scaffolding.md) — Complete `main.go` with graceful shutdown
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/layer-separation-antipatterns.md">
+# Layer Separation — Anti-Patterns and Migration Guide
+
+Anti-patterns to avoid and a step-by-step guide for refactoring a flat Gin project into clean architecture layers.
+
+Companion file: [layer-separation.md](layer-separation.md) — dependency rule, each layer in detail.
+
+---
+
+## Anti-Patterns
+
+### 1. Business Logic in Handlers
+
+```go
+// BAD — price floor is a business rule; it belongs in the usecase
+// Also BAD: err.Error() leaks internal struct names to the client
+func (h *ProductHandler) Create(c *gin.Context) {
+    var req createProductRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}) // BAD: 400, raw error, leaks internals
+        return
+    }
+    if req.Price < 100 { // business rule leaking into delivery layer
+        c.JSON(http.StatusBadRequest, gin.H{"error": "minimum price is $1.00"})
+        return
+    }
+    // ...
+}
+
+// GOOD — handler delegates unconditionally; usecase enforces the rule
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+    if input.Price < 100 {
+        return nil, fmt.Errorf("minimum price is 100 cents: %w", domain.ErrValidation)
+    }
+    // ...
+}
+```
+
+### 2. GORM Model Embedded in Domain Entity
+
+```go
+// BAD — domain entity imports gorm; framework concern leaks inward
+import "gorm.io/gorm"
+
+type Product struct {
+    gorm.Model        // embeds ID, CreatedAt, DeletedAt — ties core to ORM
+    Name  string
+    Price int64
+}
+
+// GOOD — pure domain struct; GORM mapping happens only in the repository
+type Product struct {
+    ID        uuid.UUID
+    Name      string
+    Price     int64
+    CreatedAt time.Time
+    UpdatedAt time.Time
+}
+```
+
+### 3. Repository Returning HTTP Errors
+
+```go
+// BAD — repository knows about HTTP status codes
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    // ...
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, fmt.Errorf("404 not found") // HTTP concept in data layer
+    }
+}
+
+// GOOD — repository returns domain errors; delivery layer maps to HTTP
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    // ...
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound)
+    }
+}
+```
+
+### 4. Usecase Importing Gin
+
+```go
+// BAD — usecase is coupled to the HTTP framework; untestable without HTTP
+import "github.com/gin-gonic/gin"
+
+func (u *productUsecase) CreateProduct(c *gin.Context) {
+    name := c.PostForm("name") // reads directly from gin context
+    // ...
+}
+
+// GOOD — usecase accepts plain Go types; context only for cancellation/tracing
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+    // testable without a running HTTP server
+}
+```
+
+### 5. Usecase Importing Repository Package Directly
+
+```go
+// BAD — usecase imports the outer repository package; violates dependency rule
+import "myapp/internal/repository"
+
+func NewProductUsecase(repo *repository.PostgresProductRepository) *productUsecase {
+    return &productUsecase{repo: repo}
+}
+
+// GOOD — usecase depends only on the domain interface
+import "myapp/internal/domain"
+
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+```
+
+### 6. God Usecase
+
+```go
+// BAD — one struct handles unrelated aggregates; grows without bound
+type GodUsecase struct {
+    productRepo domain.ProductRepository
+    orderRepo   domain.OrderRepository
+    userRepo    domain.UserRepository
+    paymentRepo domain.PaymentRepository
+}
+
+func (u *GodUsecase) CreateProduct(...) {}
+func (u *GodUsecase) PlaceOrder(...) {}
+func (u *GodUsecase) ProcessPayment(...) {}
+
+// GOOD — one usecase per aggregate or bounded business concern
+type productUsecase struct{ repo domain.ProductRepository }
+type orderUsecase struct {
+    productRepo domain.ProductRepository
+    orderRepo   domain.OrderRepository
+}
+type paymentUsecase struct{ paymentRepo domain.PaymentRepository }
+```
+
+---
+
+## Migration Guide
+
+Refactor a flat Gin project into clean architecture layers incrementally — one step per deploy cycle.
+
+### Step 1 — Create the directory structure
+
+```bash
+mkdir -p internal/domain
+mkdir -p internal/usecase
+mkdir -p internal/repository
+mkdir -p internal/delivery/http
+```
+
+### Step 2 — Extract domain types
+
+Move all structs that represent business concepts to `internal/domain`. Strip every JSON tag, GORM embedding, and HTTP status code from them. Domain structs are pure Go — stdlib imports only.
+
+### Step 3 — Define interfaces in domain
+
+For every database operation currently in the codebase, write a method signature in `ProductRepository`. For every business operation a handler currently calls directly, write a method in `ProductUsecase`. Place both interfaces in `internal/domain`.
+
+### Step 4 — Move database code to repository
+
+Create `internal/repository/postgres_product_repository.go`. Implement `domain.ProductRepository`. Wrap `sql.ErrNoRows` → `domain.ErrNotFound` here. Return `domain.ProductRepository` from the constructor, not the concrete struct.
+
+### Step 5 — Extract business logic to usecase
+
+Identify any logic in handlers beyond "bind, call, respond" — price rules, stock checks, computed fields, conditional branching on domain state. Move it to `internal/usecase/product_usecase.go`. Constructor returns `domain.ProductUsecase`.
+
+### Step 6 — Slim down handlers
+
+Each handler should reduce to: `ShouldBindJSON` → map to domain input → call usecase → map to response DTO → `c.JSON`. A handler over ~40 lines almost certainly contains extractable business logic.
+
+### Migration checklist
+
+- [ ] Domain structs have no `gorm.Model`, no JSON tags, no HTTP package imports
+- [ ] Interfaces defined in `internal/domain`, implemented in outer layers
+- [ ] Repository constructor returns `domain.ProductRepository` (interface)
+- [ ] Usecase constructor returns `domain.ProductUsecase` (interface)
+- [ ] Usecase has zero imports from `gin`, `net/http`, `database/sql`
+- [ ] Handlers contain zero business rules — all logic delegated to usecase
+- [ ] All dependencies wired in `cmd/api/main.go` — no `init()`, no globals
+- [ ] `go build ./...` passes with no errors
+
+---
+
+## See Also
+
+- [layer-separation.md](layer-separation.md) — Dependency rule, each layer in detail
+- [dependency-injection.md](dependency-injection.md) — Wiring layers together in `main.go`
+- [error-handling.md](error-handling.md) — Propagating domain errors across layers
+- [testing-by-layer.md](testing-by-layer.md) — Testing each layer in isolation
+</file>
+
+<file path="skills/golang-gin-clean-arch/metadata.json">
+{
+  "version": "1.1.1",
+  "organization": "henriqueatila",
+  "date": "March 2026",
+  "abstract": "Clean Architecture patterns for Go Gin APIs — layer separation, dependency injection, repository pattern, error handling, testing by layer, and project scaffolding.",
+  "references": [
+    "https://gin-gonic.com/docs/",
+    "https://pkg.go.dev/github.com/gin-gonic/gin",
+    "https://github.com/harmannkibue/golang-gin-clean-architecture",
+    "https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html"
+  ]
+}
+</file>
+
+<file path=".gitignore">
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Plans (local only)
+plans/
+
+# Agent memory/artifacts
+.claude/
+**/.claude/
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md
+
+Agent guidance for the `golang-gin-clean-arch` repository.
+
+## What This Repo Is
+
+A single Agent Skill for building Go/Gin APIs with Clean Architecture. Published on [skills.sh](https://skills.sh). The skill lives under `skills/golang-gin-clean-arch/` and follows the [Agent Skills open standard](https://agentskills.io).
+
+## Repository Structure
+
+```
+golang-gin-clean-arch/
+├── skills/
+│   └── golang-gin-clean-arch/
+│       ├── SKILL.md              # Primary skill file (auto-loaded)
+│       ├── metadata.json
+│       ├── README.md
+│       └── references/
+│           ├── layer-separation.md
+│           ├── dependency-injection.md
+│           ├── repository-pattern.md
+│           ├── error-handling.md
+│           ├── testing-by-layer.md
+│           └── project-scaffolding.md
+├── CLAUDE.md             # This file (agent guidance)
+├── AGENTS.md             # Multi-agent guidance
+├── README.md             # Project overview
+└── LICENSE               # MIT
+```
+
+## Skill Format
+
+The skill directory contains:
+- `SKILL.md` — Primary skill file with YAML frontmatter (`name`, `description`, `license`, `metadata`). Under 500 lines. Loaded by agents automatically.
+- `references/*.md` — Deep-dive reference files loaded on demand. Each under 300 lines.
+- `metadata.json` — Version, author, abstract, external references.
+- `README.md` — Brief description and structure overview.
+
+## Conventions
+
+- **Domain model**: Use `Product` entity across all examples (not `User` — differentiates from gin-best-practices).
+- **Gin API calls**: Must match official Gin documentation exactly. Never invent methods.
+- **Binding**: Use `ShouldBind*` (not `Bind*`) in all examples.
+- **Server setup**: Use `gin.New()` + explicit `r.Use(...)` (not `gin.Default()`).
+- **Goroutine safety**: Call `c.Copy()` before passing `*gin.Context` to goroutines.
+- **Logging**: Use `log/slog` (not `fmt.Println` or `log.Println`).
+- **Context**: Pass `c.Request.Context()` to all downstream blocking calls.
+- **Handlers**: Thin — bind input, call usecase, format response. No DB calls in handlers.
+- **DI**: Manual constructor-based injection. No Wire/Fx unless explicitly teaching alternatives.
+
+## Complementarity
+
+This skill is standalone. It is enhanced by the **gin-best-practices** skills (`gin-api`, `gin-auth`, `gin-database`, `gin-testing`, `gin-deploy`) for Gin-specific patterns. Cross-references use skill names (e.g., "see the **gin-api** skill"), not file paths.
+
+## Modifying Skills
+
+1. Read official Gin documentation before writing any Gin code
+2. Keep `SKILL.md` under 500 lines — move detail to `references/`
+3. Keep reference files under 300 lines — add TOC if over 200 lines
+4. Use `ShouldBind*`, `gin.New()`, `c.Copy()`, `log/slog`, and `context.Context` consistently
+5. All code examples must compile and handle errors
+</file>
+
+<file path="LICENSE">
+MIT License
+
+Copyright (c) 2026 golang-gin-clean-arch contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</file>
+
+<file path="AGENTS.md">
+# AGENTS.md
+
+Multi-agent guidance for the `golang-gin-clean-arch` repository.
+
+## Repository Overview
+
+1 Agent Skill for Clean Architecture with Go/Gin, published on skills.sh. Skill lives under `skills/golang-gin-clean-arch/`, build docs under `docs/`.
+
+## Agent Roles
+
+### Skill Author
+- Writes or updates `SKILL.md` and `references/*.md` files
+- Must read `docs/SPECIFICATION.md` for content requirements
+- Keeps `SKILL.md` under 500 lines; moves overflow to reference files
+- Uses `Product` domain model in all examples
+
+### Reviewer
+- Verifies all Gin API calls against official documentation
+- Checks `ShouldBind*` usage (not `Bind*`), `gin.New()` (not `gin.Default()`), `c.Copy()` for goroutines
+- Validates YAML frontmatter fields in `SKILL.md`
+- Runs quality checklist from `docs/SPECIFICATION.md`
+
+### Packager
+- Generates zip file under `skills/` for the skill
+- Updates `metadata.json` version fields
+- Ensures `README.md` paths match actual structure
+
+## File Ownership
+
+| Path | Owner |
+|------|-------|
+| `skills/golang-gin-clean-arch/SKILL.md` | Skill Author |
+| `skills/golang-gin-clean-arch/references/*.md` | Skill Author |
+| `skills/golang-gin-clean-arch/metadata.json` | Packager |
+| `skills/golang-gin-clean-arch/README.md` | Packager |
+| `skills/golang-gin-clean-arch.zip` | Packager |
+| `docs/*` | Skill Author |
+| `README.md` | Packager |
+
+## Conventions
+
+- All code examples must compile, handle errors, use `context.Context`, and use `log/slog`
+- Use the `Product` domain model across all examples (defined in `docs/SPECIFICATION.md`)
+- Cross-references to gin-best-practices use full skill names (e.g., "see the **golang-gin-api** skill"), not file paths
+- Conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/layer-separation.md">
+# Layer Separation — Layers in Detail
+
+Deep-dive on the 4 clean architecture layers: dependency rule, each layer's responsibilities, and the request/response flow.
+
+Companion: [layer-separation-antipatterns.md](layer-separation-antipatterns.md) — anti-patterns and migration guide.
+
+## Dependency Rule Deep Dive
+
+**Dependencies point inward only.** No inner layer may import an outer layer.
+
+```
+  ┌──────────────────────────────────────────────────┐
+  │              Outer Layers (Adapters)              │
+  │  ┌─────────────────┐  ┌───────────────────────┐  │
+  │  │    Delivery      │  │     Repository        │  │
+  │  │  (HTTP/Gin)      │  │  (Postgres/SQLC)      │  │
+  │  └────────┬─────────┘  └──────────┬────────────┘  │
+  │           │ imports                │ imports        │
+  │  ┌────────▼────────────────────────▼────────────┐  │
+  │  │           Usecase (business logic)           │  │
+  │  │                  imports ↓                   │  │
+  │  │  ┌────────────────────────────────────────┐  │  │
+  │  │  │        Domain (entities, interfaces)   │  │  │
+  │  │  └────────────────────────────────────────┘  │  │
+  │  └──────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────┘
+
+  X  Domain → any outer layer    FORBIDDEN
+  X  Usecase → repository pkg    FORBIDDEN
+  X  Usecase → gin / net/http    FORBIDDEN
+  X  Repository → delivery       FORBIDDEN
+```
+
+| Layer | Package | Allowed imports | Forbidden |
+|-------|---------|-----------------|-----------|
+| Domain | `internal/domain` | stdlib only | all internal pkgs |
+| Usecase | `internal/usecase` | `domain` | `repository`, `delivery`, `gin` |
+| Repository | `internal/repository` | `domain`, `database/sql` | `delivery`, `gin` |
+| Delivery | `internal/delivery/http` | `domain` | `repository`, `usecase` (concrete) |
+
+**How:** Domain defines `ProductRepository` and `ProductUsecase` interfaces. Outer layers implement them. Inner layers depend on the interface — never the concrete struct.
+
+---
+
+## Entity Layer in Detail
+
+Pure Go types. No framework imports. No JSON tags. No database annotations.
+
+```go
+// internal/domain/product.go
+package domain
+
+import ("errors"; "fmt"; "time"; "github.com/google/uuid")
+
+type Product struct {
+    ID          uuid.UUID
+    Name        string
+    Description string
+    Price       int64 // cents — never float
+    Stock       int32
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+
+func (p *Product) Validate() error {
+    if p.Name == ""  { return fmt.Errorf("product name is required: %w", ErrValidation) }
+    if p.Price <= 0  { return fmt.Errorf("product price must be positive: %w", ErrValidation) }
+    if p.Stock < 0   { return fmt.Errorf("product stock cannot be negative: %w", ErrValidation) }
+    return nil
+}
+
+func (p *Product) DeductStock(qty int32) error {
+    if qty <= 0     { return errors.New("quantity must be positive") }
+    if p.Stock < qty { return fmt.Errorf("insufficient stock: have %d, need %d: %w", p.Stock, qty, ErrValidation) }
+    p.Stock -= qty
+    return nil
+}
+```
+
+**Value objects** wrap primitives to enforce domain invariants (e.g. `Money{amount int64, currency string}`). Immutable — operations return new values. See [error-handling.md](error-handling.md) for `AppError` and sentinel errors.
+
+**Interface placement:** `ProductRepository` and `ProductUsecase` are defined in `internal/domain` — *used* by inner layers, *implemented* by outer layers. Full interface signatures are in SKILL.md. This is the mechanism that inverts the dependency: the repository package imports domain, never the reverse.
+
+---
+
+## Usecase Layer in Detail
+
+Orchestrates domain operations. Depends only on domain interfaces — never on `gin`, `sql`, or `gorm`.
+
+```go
+// internal/usecase/product_usecase.go
+package usecase
+
+import ("context"; "fmt"; "time"; "github.com/google/uuid"; "myapp/internal/domain")
+
+type productUsecase struct{ repo domain.ProductRepository }
+
+// Constructor returns the interface — not the concrete struct.
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+    p := &domain.Product{
+        ID: uuid.New(), Name: input.Name, Description: input.Description,
+        Price: input.Price, Stock: input.Stock,
+        CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+    }
+    if err := p.Validate(); err != nil {
+        return nil, fmt.Errorf("create product: %w", err)
+    }
+    if err := u.repo.Create(ctx, p); err != nil {
+        return nil, fmt.Errorf("create product: %w", err)
+    }
+    return p, nil
+}
+```
+
+**Multi-repo usecases** inject multiple interfaces. Each dependency comes from `internal/domain` — the concrete packages are never referenced:
+
+```go
+// domain.WarehouseRepository — hypothetical interface for this example:
+//   type WarehouseRepository interface {
+//       RecordTransfer(ctx context.Context, from, to uuid.UUID, qty int32) error
+//   }
+type transferStockUsecase struct {
+    productRepo   domain.ProductRepository
+    warehouseRepo domain.WarehouseRepository
+}
+
+// Production: define TransferStockUsecase interface in domain and return it here.
+// Returning concrete type below violates Golden Rule 6 — shown for brevity only.
+func NewTransferStockUsecase(p domain.ProductRepository, w domain.WarehouseRepository) *transferStockUsecase {
+    return &transferStockUsecase{productRepo: p, warehouseRepo: w}
+}
+
+func (u *transferStockUsecase) Execute(ctx context.Context, src, dst uuid.UUID, qty int32) error {
+    s, err := u.productRepo.FindByID(ctx, src)
+    if err != nil { return fmt.Errorf("transfer: %w", err) }
+    d, err := u.productRepo.FindByID(ctx, dst)
+    if err != nil { return fmt.Errorf("transfer: %w", err) }
+    if err := s.DeductStock(qty); err != nil { return fmt.Errorf("transfer: %w", err) }
+    d.Stock += qty
+    if err := u.productRepo.Update(ctx, s); err != nil { return fmt.Errorf("transfer: update src: %w", err) }
+    if err := u.productRepo.Update(ctx, d); err != nil { return fmt.Errorf("transfer: update dst: %w", err) }
+    return u.warehouseRepo.RecordTransfer(ctx, src, dst, qty)
+}
+```
+
+> **Production note:** This simplified example omits transactional coordination. In production, wrap multi-repo writes in a transaction using the `execTx` pattern from [repository-pattern.md](repository-pattern.md#4-transactions) to prevent partial updates.
+
+---
+
+## Repository Layer in Detail
+
+Implements domain interfaces with a specific database technology. The rest of the application never knows which database is used.
+
+**One repository per aggregate root.** `Product` owns its own `ProductRepository`. Never mix two aggregates into one repository. Standard methods: `FindByID`, `FindAll`, `Create`, `Update`, `Delete`.
+
+```go
+// internal/repository/postgres_product_repository.go
+package repository
+
+import (
+    "context"
+    "database/sql"
+    "errors"
+    "fmt"
+
+    "github.com/google/uuid"
+    "myapp/internal/domain"
+)
+
+type postgresProductRepo struct{ db *sql.DB }
+
+func NewProductRepository(db *sql.DB) domain.ProductRepository {
+    return &postgresProductRepo{db: db}
+}
+
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    var p domain.Product
+    err := r.db.QueryRowContext(ctx,
+        `SELECT id, name, description, price, stock, created_at, updated_at
+         FROM products WHERE id = $1`, id,
+    ).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Stock, &p.CreatedAt, &p.UpdatedAt)
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound)
+    }
+    if err != nil {
+        return nil, fmt.Errorf("find product: %w", err)
+    }
+    return &p, nil
+}
+```
+
+**Rule:** Map `sql.ErrNoRows` → `domain.ErrNotFound` at the repository boundary. Raw database errors must never escape to the usecase.
+
+---
+
+## Delivery Layer in Detail
+
+Handlers are thin adapters: bind → call usecase → respond. Zero business logic.
+
+**DTOs** decouple HTTP wire format from domain model. Domain structs never carry JSON tags or `binding:` tags.
+
+**Mapping tax:** `createProductRequest` → `CreateProductInput` → `Product` → `productResponse`. Justified when business rules exist between layers. For pure CRUD you may map request DTO directly to domain entity in the handler, but never skip the response DTO and never add `json`/`binding` tags to domain structs.
+
+```go
+// internal/delivery/http/product_dto.go
+package http
+
+type createProductRequest struct {
+    Name        string `json:"name"        binding:"required,min=2,max=200"`
+    Description string `json:"description" binding:"max=1000"`
+    Price       int64  `json:"price"       binding:"required,gt=0"`
+    Stock       int32  `json:"stock"       binding:"min=0"`
+}
+
+type productResponse struct {
+    ID          string `json:"id"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+    PriceCents  int64  `json:"price_cents"`
+    Stock       int32  `json:"stock"`
+    CreatedAt   string `json:"created_at"`
+    UpdatedAt   string `json:"updated_at"`
+}
+```
+
+```go
+// internal/delivery/http/product_handler.go
+package http
+
+import (
+    "log/slog"
+    "net/http"
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "myapp/internal/domain"
+)
+
+type ProductHandler struct {
+    uc     domain.ProductUsecase
+    logger *slog.Logger
+}
+
+func NewProductHandler(uc domain.ProductUsecase, logger *slog.Logger) *ProductHandler {
+    return &ProductHandler{uc: uc, logger: logger}
+}
+
+func toProductResponse(p *domain.Product) productResponse {
+    return productResponse{
+        ID: p.ID.String(), Name: p.Name, Description: p.Description,
+        PriceCents: p.Price, Stock: p.Stock,
+        CreatedAt: p.CreatedAt.Format(time.RFC3339),
+        UpdatedAt: p.UpdatedAt.Format(time.RFC3339),
+    }
+}
+
+// Create: ShouldBindJSON → domain input → usecase → response DTO.
+func (h *ProductHandler) Create(c *gin.Context) {
+    var req createProductRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "validation failed"})
+        return
+    }
+    product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInput{
+        Name: req.Name, Description: req.Description,
+        Price: req.Price, Stock: req.Stock,
+    })
+    if err != nil {
+        handleError(c, err, h.logger)
+        return
+    }
+    c.JSON(http.StatusCreated, toProductResponse(product))
+}
+```
+
+**Flow:** `ShouldBindJSON` → map to domain input → usecase → map to response DTO → `c.JSON`.
+
+---
+
+## Package by Layer vs Package by Component
+
+This skill uses **package-by-layer** (`internal/domain`, `internal/usecase`, `internal/repository`, `internal/delivery/http`). For larger codebases (3+ aggregates), consider **package-by-component** — group all code for one aggregate in a single package, using unexported types for encapsulation.
+
+**Start with package-by-layer.** Migrate to package-by-component when developers bypass the dependency rule.
+
+---
+
+## See Also
+
+- [layer-separation-antipatterns.md](layer-separation-antipatterns.md) — 6 anti-patterns with corrections, migration checklist
+- [dependency-injection.md](dependency-injection.md) — Wiring layers together in `main.go`
+- [repository-pattern.md](repository-pattern.md) — SQLC and GORM implementations
+- [error-handling.md](error-handling.md) — Propagating domain errors across layers
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/project-scaffolding.md">
+# Project Scaffolding
+
+Complete guide for bootstrapping a Go/Gin clean architecture project from scratch.
+
+**Contents:** [Quick Start](#quick-start) · [Directory Structure](#directory-structure) · [Domain](#domain-layer) · [Usecase](#usecase-layer) · [Repository](#repository-layer) · [Delivery](#delivery-layer) · [main.go](#maingo) · [Configuration](#configuration) · [Makefile](#makefile) · [Dependencies](#recommended-dependencies)
+
+## Quick Start
+
+```bash
+go mod init myapp
+
+mkdir -p cmd/api \
+         internal/{domain/mocks,usecase,repository,delivery/http,testutil} \
+         pkg/httpserver config migrations
+
+go get github.com/gin-gonic/gin \
+       github.com/google/uuid \
+       github.com/lib/pq \
+       github.com/ilyakaznacheev/cleanenv
+```
+
+Add files in dependency order: `domain` → `usecase` → `repository` → `delivery` → `main`.
+
+## Directory Structure
+
+```
+myapp/
+├── cmd/api/main.go
+├── config/config.go
+├── internal/
+│   ├── domain/
+│   │   ├── product.go      # Entity, ProductRepository, ProductUsecase, input types
+│   │   ├── errors.go       # AppError + sentinel vars
+│   │   └── mocks/          # Generated testify mocks
+│   ├── usecase/product_usecase.go
+│   ├── repository/product_repository.go
+│   ├── delivery/http/
+│   │   ├── router.go       # gin.New(), middleware, /healthz, route groups
+│   │   └── product_handler.go
+│   └── testutil/
+│       ├── fixtures.go     # NewTestProduct, NewTestCreateInput
+│       └── db.go           # RunMigrations (integration tests)
+├── migrations/
+│   ├── 000001_create_products.up.sql
+│   └── 000001_create_products.down.sql
+├── .env.example
+├── .air.toml
+├── Makefile
+└── go.mod
+```
+
+## Domain Layer
+
+`internal/domain/product.go` — entity + interfaces. See `SKILL.md` for full listing.
+
+`internal/domain/errors.go` — sentinel errors used across all layers:
+
+```go
+package domain
+
+// No net/http import — domain must not know about HTTP (Rule 1)
+type AppError struct {
+	Code    int
+	Message string
+	Detail  string
+}
+
+func (e *AppError) Error() string { return e.Message }
+
+var (
+	ErrNotFound   = &AppError{Code: 404, Message: "not found"}
+	ErrConflict   = &AppError{Code: 409, Message: "already exists"}
+	ErrValidation = &AppError{Code: 422, Message: "validation failed"}
+	ErrForbidden  = &AppError{Code: 403, Message: "forbidden"}
+)
+```
+
+Rule: `domain` never imports `gin`, `database/sql`, or any outer layer.
+
+## Usecase Layer
+
+```go
+// internal/usecase/product_usecase.go
+package usecase
+
+// Constructor returns the interface — hides the struct, enables mock injection.
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+	return &productUsecase{repo: repo}
+}
+
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+	if input.Price <= 0 {
+		return nil, fmt.Errorf("create product: %w", domain.ErrValidation)
+	}
+	p := &domain.Product{
+		ID: uuid.New(), Name: input.Name, Description: input.Description,
+		Price: input.Price, Stock: input.Stock,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := u.repo.Create(ctx, p); err != nil {
+		return nil, fmt.Errorf("create product: %w", err)
+	}
+	return p, nil
+}
+// GetProduct, ListProducts, UpdateProduct, DeleteProduct follow the same pattern.
+```
+
+Rule: usecase never imports `gin`, `database/sql`, or `repository`.
+
+## Repository Layer
+
+```go
+// internal/repository/product_repository.go
+package repository
+
+func NewProductRepository(db *sql.DB) domain.ProductRepository {
+	return &postgresProductRepo{db: db}
+}
+
+func (r *postgresProductRepo) Create(ctx context.Context, p *domain.Product) error {
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO products (id,name,description,price,stock,created_at,updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		p.ID, p.Name, p.Description, p.Price, p.Stock, p.CreatedAt, p.UpdatedAt)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return fmt.Errorf("product %q: %w", p.Name, domain.ErrConflict)
+		}
+		return fmt.Errorf("insert product: %w", err)
+	}
+	return nil
+}
+
+// FindByID, FindAll, Update, Delete follow the same pattern: wrap sql.ErrNoRows →
+// domain.ErrNotFound, unique violations → domain.ErrConflict. See SKILL.md.
+```
+
+## Delivery Layer
+
+```go
+// requestLogger logs method, path, status, and latency for each request.
+func requestLogger(logger *slog.Logger) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        c.Next()
+        logger.InfoContext(c.Request.Context(), "request",
+            "method", c.Request.Method,
+            "path", c.Request.URL.Path,
+            "status", c.Writer.Status(),
+            "latency", time.Since(start).String(),
+        )
+    }
+}
+```
+
+```go
+// internal/delivery/http/router.go
+func NewRouter(productUC domain.ProductUsecase, logger *slog.Logger) *gin.Engine {
+	r := gin.New()
+	r.Use(gin.Recovery(), requestLogger(logger))
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Next()
+	})
+	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	// CORS + rate limiting: see golang-gin-api skill
+	RegisterProductRoutes(r.Group("/api/v1"), NewProductHandler(productUC, logger))
+	return r
+}
+```
+
+`handleError` in `product_handler.go` — maps `*domain.AppError` to HTTP, logs the rest:
+
+```go
+func handleError(c *gin.Context, err error, logger *slog.Logger) {
+	var appErr *domain.AppError
+	if errors.As(err, &appErr) {
+		resp := gin.H{"error": appErr.Message}
+		if appErr.Code < 500 && appErr.Detail != "" { resp["detail"] = appErr.Detail }
+		c.JSON(appErr.Code, resp)
+		return
+	}
+	logger.ErrorContext(c.Request.Context(), "unhandled error", "error", err)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+}
+```
+
+Handler struct, `RegisterProductRoutes`, and CRUD methods: see `SKILL.md`.
+
+## main.go
+
+```go
+// cmd/api/main.go — imports: context, database/sql, log/slog, net/http, os, os/signal, syscall, time
+package main
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	cfg, err := config.Load()
+	if err != nil { logger.Error("load config", "error", err); os.Exit(1) }
+
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	if err != nil { logger.Error("open db", "error", err); os.Exit(1) }
+	defer db.Close()
+	db.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
+	db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+	if err := db.PingContext(context.Background()); err != nil {
+		logger.Error("ping db", "error", err); os.Exit(1)
+	}
+
+	// DI: repo → usecase → handler → router (one line per layer)
+	router := delivery.NewRouter(
+		usecase.NewProductUsecase(repository.NewProductRepository(db)), logger)
+
+	srv := &http.Server{Addr: cfg.Addr, Handler: router,
+		ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", "error", err); os.Exit(1)
+		}
+	}()
+	logger.Info("server starting", "addr", cfg.Addr)
+
+	// graceful shutdown: HTTP first (drains requests), then DB pool
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil { logger.Error("shutdown", "error", err) }
+	logger.Info("server stopped")
+}
+```
+
+## Configuration
+
+```go
+// config/config.go
+package config
+
+type Config struct {
+	Addr              string        `env:"SERVER_ADDR"          env-default:":8080"`
+	DatabaseURL       string        `env:"DATABASE_URL"          env-required:"true"`
+	DBMaxOpenConns    int           `env:"DB_MAX_OPEN_CONNS"    env-default:"25"`
+	DBMaxIdleConns    int           `env:"DB_MAX_IDLE_CONNS"    env-default:"10"`
+	DBConnMaxLifetime time.Duration `env:"DB_CONN_MAX_LIFETIME" env-default:"5m"`
+	Env               string        `env:"APP_ENV"              env-default:"development"`
+}
+
+func Load() (*Config, error) {
+	var cfg Config
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, fmt.Errorf("read env: %w", err)
+	}
+	return &cfg, nil
+}
+```
+
+`.env.example` (commit; copy to `.env` locally — add `.env` to `.gitignore`):
+
+```dotenv
+SERVER_ADDR=:8080
+# Production: use sslmode=require or sslmode=verify-full
+DATABASE_URL=postgres://user:password@localhost:5432/myapp?sslmode=disable
+DB_MAX_OPEN_CONNS=25
+DB_MAX_IDLE_CONNS=10
+DB_CONN_MAX_LIFETIME=5m
+APP_ENV=development
+```
+
+## Makefile
+
+```makefile
+BINARY := bin/api
+MAIN   := ./cmd/api
+MIGS   := ./migrations
+DB_URL ?= $(shell grep DATABASE_URL .env | cut -d= -f2-)
+build:            ; go build -o $(BINARY) $(MAIN)
+run: build        ; $(BINARY)
+dev:              ; air
+test:             ; go test -race -count=1 ./...
+test-integration: ; go test -race -count=1 -tags integration ./...
+coverage:         ; go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html
+lint:             ; golangci-lint run ./...
+migrate-up:       ; migrate -path $(MIGS) -database "$(DB_URL)" up
+migrate-down:     ; migrate -path $(MIGS) -database "$(DB_URL)" down 1
+migrate-create:
+	@read -p "Name: " n; migrate create -ext sql -dir $(MIGS) -seq $$n
+mocks:            ; go generate ./internal/domain/...
+sqlc:             ; sqlc generate
+```
+
+## Recommended Dependencies
+
+**Core:** `gin` (v1.10+), `uuid`, `lib/pq` or `pgx/v5`, `cleanenv`, `sqlc` (or `gorm`). **Testing:** `testify`, `mockery/v2`, `testcontainers-go`, `golang-migrate/v4`. **Dev:** `air` (live reload), `golangci-lint`.
+
+**See also:** [layer-separation.md](layer-separation.md) · [dependency-injection.md](dependency-injection.md) · [repository-pattern.md](repository-pattern.md) · [error-handling.md](error-handling.md) · [testing-by-layer.md](testing-by-layer.md)
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/testing-by-layer.md">
+# Testing by Layer
+
+Testing strategies per layer for Go/Gin clean architecture. All examples use the `Product` entity.
+
+**Contents:** [Mock Strategy](#mock-strategy) · [Test Organization](#test-organization) · [Usecase Tests](#usecase-unit-tests) · [Handler Tests](#handler-unit-tests) · [Integration Tests](#repository-integration-tests) · [Mock Generation](#mock-generation) · [Fixtures](#test-fixtures) · [Coverage](#coverage-goals) · [Anti-Patterns](#testing-anti-patterns)
+
+## Mock Strategy
+
+**Mocks belong at system boundaries only.** Over-mocking creates fragile tests.
+
+| Layer | Test with | Mock? |
+|-------|-----------|-------|
+| Domain | Pure unit tests | **Never** — pure logic, no deps |
+| Usecase | Unit tests | **Yes** — mock `ProductRepository` |
+| Handler | Unit tests | **Yes** — mock `ProductUsecase` |
+| Repository | Integration tests | **Never** — use real DB (testcontainers) |
+
+Only mock interfaces at external boundaries. Mocking something that isn't a boundary interface indicates an architecture leak.
+
+---
+
+## Test Organization
+
+```
+internal/domain/mocks/              # generated mocks (ProductRepository, ProductUsecase)
+internal/usecase/product_usecase_test.go     # unit — mock repo
+internal/repository/product_repository_test.go  # //go:build integration
+internal/delivery/http/product_handler_test.go  # unit — mock usecase
+internal/testutil/fixtures.go       # NewTestProduct, NewTestCreateInput
+internal/testutil/db.go             # RunMigrations (integration only)
+```
+
+Helpers in `internal/testutil/` only. `//go:build integration` must be the **first line** (before `package`).
+
+---
+
+## Usecase Unit Tests
+
+```go
+// internal/usecase/product_usecase_test.go
+package usecase_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"myapp/internal/domain"
+	"myapp/internal/domain/mocks"
+	"myapp/internal/usecase"
+)
+
+func TestCreateProduct(t *testing.T) {
+	valid := domain.CreateProductInput{Name: "Widget", Price: 999, Stock: 10}
+	tests := []struct {
+		name    string
+		input   domain.CreateProductInput
+		repoErr error
+		wantErr error
+	}{
+		{name: "success", input: valid},
+		{name: "duplicate → conflict", input: valid,
+			repoErr: domain.ErrConflict, wantErr: domain.ErrConflict},
+		{name: "zero price → validation",
+			input: domain.CreateProductInput{Name: "W"}, wantErr: domain.ErrValidation},
+		{name: "db error → internal", input: valid, repoErr: errors.New("conn reset")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := mocks.NewProductRepository(t)
+			if tc.input.Price > 0 { // repo not reached when validation fails
+				repo.On("Create", context.Background(),
+					mock.MatchedBy(func(*domain.Product) bool { return true })).
+					Return(tc.repoErr).Maybe()
+			}
+			product, err := usecase.NewProductUsecase(repo).
+				CreateProduct(context.Background(), tc.input)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				assert.Nil(t, product)
+				return
+			}
+			if tc.repoErr != nil {
+				require.Error(t, err)
+				var appErr *domain.AppError
+				assert.False(t, errors.As(err, &appErr), "db errors must not be AppError")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, int64(999), product.Price)
+			assert.NotEqual(t, uuid.Nil, product.ID)
+		})
+	}
+}
+```
+
+Constructor returns the **interface**. Use `require` for fatal checks, `assert` for non-fatal.
+
+---
+
+## Handler Unit Tests
+
+```go
+// internal/delivery/http/product_handler_test.go
+package http_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	delivery "myapp/internal/delivery/http"
+	"myapp/internal/domain"
+	"myapp/internal/domain/mocks"
+)
+
+func init() { gin.SetMode(gin.TestMode) }
+
+func newTestRouter(uc domain.ProductUsecase) *gin.Engine {
+	r := gin.New()
+	h := delivery.NewProductHandler(uc, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	delivery.RegisterProductRoutes(r.Group("/api/v1"), h)
+	return r
+}
+
+func TestCreateProductHandler(t *testing.T) {
+	validBody, _ := json.Marshal(map[string]any{"name": "Widget", "price": 999, "stock": 5})
+	tests := []struct {
+		name       string
+		body       []byte
+		setup      func(*mocks.ProductUsecase)
+		wantStatus int
+	}{
+		{name: "success → 201", body: validBody, wantStatus: http.StatusCreated,
+			setup: func(m *mocks.ProductUsecase) {
+				m.On("CreateProduct", mock.Anything, mock.Anything).
+					Return(&domain.Product{ID: uuid.New(), Name: "Widget", Price: 999}, nil)
+			}},
+		{name: "bad JSON → 422", body: []byte(`{bad`),
+			setup: func(*mocks.ProductUsecase) {}, wantStatus: http.StatusUnprocessableEntity},
+		{name: "conflict → 409", body: validBody, wantStatus: http.StatusConflict,
+			setup: func(m *mocks.ProductUsecase) {
+				m.On("CreateProduct", mock.Anything, mock.Anything).
+					Return(nil, domain.ErrConflict)
+			}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			uc := mocks.NewProductUsecase(t)
+			tc.setup(uc)
+			req, err := http.NewRequest(http.MethodPost, "/api/v1/products", bytes.NewReader(tc.body))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			newTestRouter(uc).ServeHTTP(w, req)
+			assert.Equal(t, tc.wantStatus, w.Code)
+		})
+	}
+}
+```
+
+`httptest.NewRecorder()` + `ServeHTTP` — no TCP. Test observable HTTP behavior only; never test `handleError` internals.
+
+---
+
+## Repository Integration Tests
+
+```go
+//go:build integration
+
+package repository_test
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+
+	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"myapp/internal/domain"
+	"myapp/internal/repository"
+	"myapp/internal/testutil"
+)
+
+var testDB *sql.DB
+
+func TestMain(m *testing.M) {
+	ctx := context.Background()
+	pgc, err := postgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:16-alpine"),
+		postgres.WithDatabase("testdb"), postgres.WithUsername("test"), postgres.WithPassword("test"),
+		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").
+			WithOccurrence(2).WithStartupTimeout(30*time.Second)),
+	)
+	if err != nil { fmt.Fprintf(os.Stderr, "start postgres: %v\n", err); os.Exit(1) }
+	defer pgc.Terminate(ctx) //nolint:errcheck
+	dsn, _ := pgc.ConnectionString(ctx, "sslmode=disable")
+	testDB, _ = sql.Open("postgres", dsn)
+	defer testDB.Close()
+	testutil.RunMigrations(testDB)
+	os.Exit(m.Run())
+}
+
+func TestProductRepository_Create(t *testing.T) {
+	t.Cleanup(func() { testDB.Exec("DELETE FROM products") }) //nolint:errcheck
+	repo := repository.NewProductRepository(testDB)
+	p := testutil.NewTestProduct(nil)
+	require.NoError(t, repo.Create(context.Background(), p))
+	found, err := repo.FindByID(context.Background(), p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, p.Name, found.Name)
+	// duplicate must surface ErrConflict, not a raw *pq.Error
+	assert.ErrorIs(t, repo.Create(context.Background(), p), domain.ErrConflict)
+}
+```
+
+Run: `go test -tags integration ./internal/repository/...` — `TestMain` owns the container (one per package); `t.Cleanup` truncates rows for isolation.
+
+---
+
+## Mock Generation
+
+Add `go:generate` directives above each interface in `internal/domain/product.go`:
+
+```go
+//go:generate mockery --name=ProductRepository --outpkg=mocks --output=./mocks
+type ProductRepository interface { /* ... */ }
+
+//go:generate mockery --name=ProductUsecase --outpkg=mocks --output=./mocks
+type ProductUsecase interface { /* ... */ }
+```
+
+```bash
+go generate ./internal/domain/...   # regenerates all mocks
+```
+
+---
+
+## Test Fixtures
+
+Factory functions in `internal/testutil/fixtures.go`:
+
+```go
+func NewTestProduct(overrides *domain.Product) *domain.Product {
+	p := &domain.Product{ID: uuid.New(), Name: "Test Widget", Price: 999, Stock: 10,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if overrides != nil {
+		if overrides.Name != "" { p.Name = overrides.Name }
+		if overrides.Price != 0 { p.Price = overrides.Price }
+	}
+	return p
+}
+
+func NewTestCreateInput() domain.CreateProductInput {
+	return domain.CreateProductInput{Name: "Test Widget", Price: 999, Stock: 10}
+}
+```
+
+---
+
+## Coverage Goals
+
+| Layer | Target | Rationale |
+|---|---|---|
+| Domain | 95%+ | Pure logic, no external deps |
+| Usecase | 90%+ | Core business logic |
+| Handler | 80%+ | Cover binding + all status-code paths |
+| Repository | 70%+ | Integration tests count toward total |
+
+---
+
+## Testing Anti-Patterns
+
+**Never mock:** stdlib types, domain logic, repositories in integration tests. **Never share:** mutable fixtures across sub-tests. **Always:** gate integration tests with `-tags integration`, include error-path cases, check `rows.Err()` after iteration.
+
+---
+
+**See also:** [layer-separation.md](layer-separation.md) · [dependency-injection.md](dependency-injection.md) · [error-handling.md](error-handling.md) · [project-scaffolding.md](project-scaffolding.md)
+</file>
+
+<file path="README.md">
+# golang-gin-clean-arch
+
+Agent Skill for Clean Architecture with Go and the Gin framework.
+
+[![Skills.sh](https://img.shields.io/badge/skills.sh-golang--gin--clean--arch-blue)](https://skills.sh/henriqueatila/golang-gin-clean-arch)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
+
+## What Is This
+
+A single Agent Skill that teaches clean architecture patterns for Go/Gin APIs. Covers layer separation, dependency injection, repository pattern, error handling, testing by layer, and project scaffolding.
+
+Works standalone. Enhanced with [gin-best-practices](https://github.com/henriqueatila/gin-best-practices) for Gin-specific patterns.
+
+---
+
+## Install
+
+```bash
+npx skills add henriqueatila/golang-gin-clean-arch --skill golang-gin-clean-arch
+```
+
+### Manual Installation
+
+```bash
+curl -L https://github.com/henriqueatila/golang-gin-clean-arch/raw/main/skills/golang-gin-clean-arch.zip -o golang-gin-clean-arch.zip
+unzip golang-gin-clean-arch.zip -d .claude/skills/golang-gin-clean-arch/
+```
+
+---
+
+## Skill Contents
+
+| File | Description |
+|------|-------------|
+| **SKILL.md** | 6 golden rules, 4-layer overview, DI bootstrap, error flow |
+| **references/layer-separation.md** | Layer responsibilities, dependency rule enforcement |
+| **references/layer-separation-antipatterns.md** | Anti-patterns (bad→good), migration guide |
+| **references/dependency-injection.md** | Manual DI, DI container pattern, testing with DI |
+| **references/dependency-injection-alternatives.md** | Scaling DI, Wire/Fx alternatives |
+| **references/repository-pattern.md** | SQLC, GORM, transactions, query patterns |
+| **references/error-handling.md** | Domain errors, propagation, HTTP mapping |
+| **references/input-sanitization.md** | Sanitize untrusted strings at delivery boundary |
+| **references/testing-by-layer.md** | Mock-per-layer, testcontainers, coverage goals |
+| **references/project-scaffolding.md** | From-scratch setup, Makefile, configuration |
+
+---
+
+## Design Principles
+
+**Opinionated patterns** — One right way per topic, chosen for production correctness.
+
+**PostgreSQL default** — All database examples target PostgreSQL. SQLC as primary, GORM as alternative.
+
+**Production-first** — `gin.New()` + explicit middleware, `log/slog`, `ShouldBind*`, environment variables.
+
+**Go 1.24+** — Uses stdlib features (`log/slog`, `context`, `errors.As`).
+
+**Manual DI** — Transparent constructor-based injection. No Wire/Fx unless teaching alternatives.
+
+**Product domain model** — All examples use `Product` entity (not `User` — differentiates from gin-best-practices).
+
+---
+
+## Architecture
+
+### Progressive Disclosure
+
+1. **SKILL.md** — The 80% you need daily. Loaded automatically. Under 500 lines.
+2. **references/*.md** — The 20% for deep dives. Loaded on demand. Each under 300 lines.
+
+### Complementarity
+
+This skill is standalone. It teaches clean architecture structure and patterns. For Gin-specific details (routing, middleware, JWT, deployment), see [gin-best-practices](https://github.com/henriqueatila/gin-best-practices).
+
+---
+
+## Directory Structure
+
+```
+golang-gin-clean-arch/
+├── README.md
+├── CLAUDE.md
+├── AGENTS.md
+├── LICENSE
+│
+├── skills/
+│   └── golang-gin-clean-arch/
+│       ├── SKILL.md
+│       ├── metadata.json
+│       ├── README.md
+│       └── references/
+│           ├── layer-separation.md
+│           ├── layer-separation-antipatterns.md
+│           ├── dependency-injection.md
+│           ├── dependency-injection-alternatives.md
+│           ├── repository-pattern.md
+│           ├── error-handling.md
+│           ├── input-sanitization.md
+│           ├── testing-by-layer.md
+│           └── project-scaffolding.md
+│
+├── skills/
+│   └── golang-gin-clean-arch.zip
+│
+└── docs/
+    └── SPECIFICATION.md
+```
+
+---
+
+## Contributing
+
+1. Follow the design principles above — patterns must be production-ready
+2. Code examples must compile and handle errors (no `_` for errors, no `fmt.Println`)
+3. SKILL.md must stay under 500 lines — move detail to reference files
+4. Reference files over 300 lines must be split; over 200 lines must include a TOC
+5. Use `gin.New()`, `log/slog`, `ShouldBind*`, and `context.Context` consistently
+6. Use `Product` entity in all examples (not `User`)
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/error-handling.md">
+# Error Handling — Deep Dive
+
+Quick overview: [SKILL.md](../SKILL.md).
+
+## Table of Contents
+
+1. [Domain Error Types](#1-domain-error-types)
+2. [Error Propagation Rules](#2-error-propagation-rules)
+3. [Repository Error Wrapping](#3-repository-error-wrapping)
+4. [Usecase Error Enrichment](#4-usecase-error-enrichment)
+5. [HTTP Error Mapping Middleware](#5-http-error-mapping-middleware)
+6. [Validation Errors](#6-validation-errors)
+7. [Logging Strategy](#7-logging-strategy)
+8. [Panic Recovery](#8-panic-recovery)
+
+---
+
+## 1. Domain Error Types
+
+All error types in `internal/domain/errors.go`. Stdlib only — no framework imports, no `encoding/json`.
+
+```go
+// internal/domain/errors.go
+package domain
+
+type AppError struct {
+    Code    int
+    Message string
+    Detail  string
+}
+
+func (e *AppError) Error() string { return e.Message }
+
+var (
+    ErrNotFound   = &AppError{Code: 404, Message: "not found"}
+    ErrConflict   = &AppError{Code: 409, Message: "already exists"}
+    ErrValidation = &AppError{Code: 422, Message: "validation failed"}
+    ErrForbidden  = &AppError{Code: 403, Message: "forbidden"}
+)
+```
+
+Check errors: `errors.As(err, &appErr)` to extract; `errors.Is(err, domain.ErrNotFound)` for sentinel identity.
+Anti-pattern: `if err.Error() == "not found"` (breaks with wrapping).
+
+**Adding detail to errors** — use `fmt.Errorf` to wrap the sentinel with context. Detail stays in the error chain, not in the struct:
+
+```go
+// In usecase — adds context without changing AppError struct
+return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation)
+```
+
+---
+
+## 2. Error Propagation Rules
+
+| Layer | Receives | Must do | Must NOT do |
+|-------|----------|---------|-------------|
+| Repository | raw DB errors (`sql.ErrNoRows`, driver) | wrap into domain errors | return `sql.ErrNoRows` or driver types |
+| Usecase | domain errors from repo | add context with `%w` | create HTTP codes or call gin |
+| Delivery | domain errors from usecase | map to HTTP status + JSON | contain business logic or DB awareness |
+
+**Flow:** `sql.ErrNoRows` → repo wraps → `domain.ErrNotFound` → usecase wraps → delivery `errors.As` → 404 JSON.
+
+`%w` preserves the error chain; `errors.As` unwraps through any depth.
+
+---
+
+## 3. Repository Error Wrapping
+
+Translate every DB-specific error to a domain error before returning.
+
+```go
+// internal/repository/product_repository.go
+package repository
+
+import ("context"; "database/sql"; "errors"; "fmt"
+    "github.com/google/uuid"; "github.com/lib/pq"; "myapp/internal/domain")
+
+type postgresProductRepo struct{ db *sql.DB }
+
+func NewProductRepository(db *sql.DB) domain.ProductRepository { return &postgresProductRepo{db: db} }
+
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    var p domain.Product
+    err := r.db.QueryRowContext(ctx,
+        `SELECT id, name, description, price, stock, created_at, updated_at FROM products WHERE id = $1`, id,
+    ).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Stock, &p.CreatedAt, &p.UpdatedAt)
+    if errors.Is(err, sql.ErrNoRows) { return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound) }
+    if err != nil { return nil, fmt.Errorf("query product: %w", err) }
+    return &p, nil
+}
+func (r *postgresProductRepo) Create(ctx context.Context, p *domain.Product) error {
+    _, err := r.db.ExecContext(ctx,
+        `INSERT INTO products (id, name, description, price, stock, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        p.ID, p.Name, p.Description, p.Price, p.Stock, p.CreatedAt, p.UpdatedAt)
+    if err != nil { return wrapDBError("insert product", err) }
+    return nil
+}
+
+func wrapDBError(op string, err error) error {
+    var pqErr *pq.Error
+    if errors.As(err, &pqErr) {
+        switch pqErr.Code {
+        case "23505": return fmt.Errorf("%s: %w", op, domain.ErrConflict)  // unique_violation
+        case "23503": return fmt.Errorf("%s: %w", op, domain.ErrNotFound)  // foreign_key_violation
+        }
+    }
+    // Unrecognized DB errors: wrap with operation context for debugging.
+    return fmt.Errorf("%s: %w", op, err)
+}
+```
+
+---
+
+## 4. Usecase Error Enrichment
+
+Add business context with `fmt.Errorf("...: %w", err)`. Create domain errors for business rule violations.
+
+```go
+// internal/usecase/product_usecase.go
+package usecase
+
+import ("context"; "fmt"; "time"; "github.com/google/uuid"; "myapp/internal/domain")
+
+type productUsecase struct{ repo domain.ProductRepository }
+
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+func (u *productUsecase) GetProduct(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    p, err := u.repo.FindByID(ctx, id)
+    if err != nil { return nil, fmt.Errorf("get product %s: %w", id, err) }
+    return p, nil
+}
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+    if input.Price <= 0 {
+        return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation)
+    }
+    p := &domain.Product{ID: uuid.New(), Name: input.Name, Description: input.Description,
+        Price: input.Price, Stock: input.Stock, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+    if err := u.repo.Create(ctx, p); err != nil { return nil, fmt.Errorf("create product: %w", err) }
+    return p, nil
+}
+func (u *productUsecase) UpdateProduct(ctx context.Context, id uuid.UUID, input domain.UpdateProductInput) (*domain.Product, error) {
+    p, err := u.repo.FindByID(ctx, id)
+    if err != nil { return nil, fmt.Errorf("update product: %w", err) }
+    if input.Name != nil { p.Name = *input.Name }
+    if input.Price != nil {
+        if *input.Price <= 0 { return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation) }
+        p.Price = *input.Price
+    }
+    if input.Stock != nil { p.Stock = *input.Stock }
+    p.UpdatedAt = time.Now().UTC()
+    if err := u.repo.Update(ctx, p); err != nil { return nil, fmt.Errorf("update product: %w", err) }
+    return p, nil
+}
+// DeleteProduct and ListProducts follow the same pattern: wrap repo errors with fmt.Errorf("op: %w", err).
+```
+
+---
+
+## 5. HTTP Error Mapping Middleware
+
+> **Alternative to `handleError` helper:** The middleware approach below is more scalable — handlers call `_ = c.Error(err)` and return. The `handleError` helper (see SKILL.md) is simpler for small apps. Choose one pattern per project; do not mix.
+
+Handlers call `c.Error(err)` and return. Middleware extracts `AppError` and writes JSON.
+
+```go
+// internal/delivery/http/middleware/error_middleware.go
+package middleware
+
+import ("errors"; "log/slog"; "net/http"
+    "github.com/gin-gonic/gin"; "myapp/internal/domain")
+
+func ErrorMiddleware(logger *slog.Logger) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Next()
+        if len(c.Errors) == 0 { return }
+        err := c.Errors.Last().Err
+        var appErr *domain.AppError
+        if errors.As(err, &appErr) {
+            if appErr.Code >= 500 {
+                logger.ErrorContext(c.Request.Context(), "internal error", "error", err, "path", c.Request.URL.Path)
+            } else {
+                logger.WarnContext(c.Request.Context(), "client error", "status", appErr.Code, "error", err, "path", c.Request.URL.Path)
+            }
+            resp := gin.H{"error": appErr.Message}
+            if appErr.Code < 500 && appErr.Detail != "" { resp["detail"] = appErr.Detail }
+            c.JSON(appErr.Code, resp)
+            return
+        }
+        logger.ErrorContext(c.Request.Context(), "unhandled error", "error", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+    }
+}
+```
+
+> `c.JSON` after `c.Next()` in middleware sets the response. `c.Abort()` is unnecessary because all handlers have already executed — `c.Next()` returns after the handler chain completes.
+
+**Thin handler — no mapping logic:**
+```go
+func (h *ProductHandler) GetByID(c *gin.Context) {
+    id, err := uuid.Parse(c.Param("id"))
+    if err != nil { _ = c.Error(fmt.Errorf("invalid product ID: %w", domain.ErrValidation)); return }
+    product, err := h.uc.GetProduct(c.Request.Context(), id)
+    if err != nil { _ = c.Error(err); return }
+    c.JSON(http.StatusOK, toProductResponse(product))
+}
+```
+
+**Router setup:** `r.Use(middleware.RecoveryMiddleware(logger))` then `r.Use(middleware.ErrorMiddleware(logger))`.
+
+---
+
+## 6. Validation Errors
+
+Two kinds: struct-tag binding (`ShouldBindJSON`) and business rule (usecase).
+
+```go
+import ("errors"; "strings"
+    "github.com/go-playground/validator/v10")
+
+type createProductRequest struct {
+    Name        string `json:"name"        binding:"required,min=2,max=200"`
+    Description string `json:"description" binding:"max=1000"`
+    Price       int64  `json:"price"       binding:"required,gt=0"`
+    Stock       int32  `json:"stock"       binding:"min=0"`
+}
+
+func (h *ProductHandler) Create(c *gin.Context) {
+    var req createProductRequest
+    if err := c.ShouldBindJSON(&req); err != nil { _ = c.Error(formatBindError(err)); return }
+    product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInput{
+        Name: req.Name, Description: req.Description, Price: req.Price, Stock: req.Stock})
+    if err != nil { _ = c.Error(err); return }
+    c.JSON(http.StatusCreated, toProductResponse(product))
+}
+
+// formatBindError extracts field-level validation details from binding errors.
+func formatBindError(err error) *domain.AppError {
+    var ve validator.ValidationErrors
+    if errors.As(err, &ve) {
+        fields := make([]string, len(ve))
+        for i, fe := range ve { fields[i] = fe.Field() + ": " + fe.Tag() }
+        return &domain.AppError{Code: 422, Message: "validation failed", Detail: strings.Join(fields, "; ")}
+    }
+    return &domain.AppError{Code: 422, Message: "validation failed"}
+}
+```
+
+Response: `{"error":"validation failed","detail":"Name: min; Price: gt"}`
+
+---
+
+## 7. Logging Strategy
+
+Log at the delivery layer only. Repo and usecase propagate — they never call logger.
+
+- 2xx/3xx: no log (success)
+- 4xx: `logger.WarnContext` (client mistake, not an outage)
+- 5xx: `logger.ErrorContext` (needs operator attention)
+
+Centralised in `ErrorMiddleware` (section 5). Use `slog` structured calls only — never `fmt.Println` or `log.Println`.
+
+---
+
+## 8. Panic Recovery
+
+```go
+// internal/delivery/http/middleware/recovery_middleware.go
+package middleware
+
+import ("log/slog"; "net/http"; "github.com/gin-gonic/gin")
+
+func RecoveryMiddleware(logger *slog.Logger) gin.HandlerFunc {
+    // nil writer: suppress Gin's default stack trace output; custom slog logging below
+    return gin.RecoveryWithWriter(nil, func(c *gin.Context, recovered any) {
+        logger.ErrorContext(c.Request.Context(), "panic recovered",
+            "panic", recovered, "path", c.Request.URL.Path)
+        c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+    })
+}
+```
+
+Use `gin.New()` (not `gin.Default()`) — `gin.Default()` adds its own plaintext logger and recovery. Register `RecoveryMiddleware` before all other middleware.
+
+---
+
+## See Also
+
+- **[repository-pattern.md](repository-pattern.md)** — DB error wrapping (SQLC, GORM)
+- **[testing-by-layer.md](testing-by-layer.md)** — testing error paths, mock error injection
+- **[layer-separation.md](layer-separation.md)** — why errors must not cross layer boundaries raw
+- **golang-gin-api** skill — `ShouldBind*` variants, header parsing, request lifecycle
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/input-sanitization.md">
+# Input Sanitization
+
+Binding tags (`binding:"required,min=2,max=200"`) validate structure but do not sanitize content. Treat all user-supplied strings as untrusted data.
+
+---
+
+## Sanitize at the Delivery Boundary
+
+Strip control characters and trim whitespace **after** `ShouldBind*` succeeds, **before** mapping to domain input.
+
+```go
+// internal/delivery/http/sanitize.go
+package http
+
+import "strings"
+
+// SanitizeString strips control characters and trims whitespace.
+// Call on every free-text field after ShouldBind* succeeds.
+func SanitizeString(s string) string {
+    return strings.Map(func(r rune) rune {
+        if r < 32 && r != '\n' && r != '\r' && r != '\t' {
+            return -1 // drop control chars
+        }
+        return r
+    }, strings.TrimSpace(s))
+}
+```
+
+> **Note:** `SanitizeString` preserves `\n`, `\r`, `\t` for multi-line text fields. For values used in HTTP headers, strip all control characters: `strings.Map(func(r rune) rune { if r < 32 { return -1 }; return r }, s)`.
+
+Usage in handler:
+
+```go
+// In handler — sanitize after binding, before mapping to domain input
+product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInput{
+    Name:        SanitizeString(req.Name),
+    Description: SanitizeString(req.Description),
+    Price:       req.Price,
+    Stock:       req.Stock,
+})
+```
+
+---
+
+## Extended Sanitization
+
+### Strip DEL and High Control Characters
+
+`SanitizeString` above strips ASCII control chars (0–31) but misses the DEL character (127) and Unicode control categories. For stricter sanitization:
+
+```go
+import ("strings"; "unicode")
+
+// StrictSanitizeString strips all control characters including DEL (127)
+// and Unicode control categories (Cc, Cf), then trims whitespace.
+// Preserves \n, \r, \t for multi-line fields.
+func StrictSanitizeString(s string) string {
+    return strings.Map(func(r rune) rune {
+        if r == '\n' || r == '\r' || r == '\t' {
+            return r // preserve whitespace before unicode.IsControl check
+        }
+        if r < 32 || r == 127 {
+            return -1
+        }
+        if unicode.IsControl(r) {
+            return -1
+        }
+        return r
+    }, strings.TrimSpace(s))
+}
+```
+
+> Use this variant for fields displayed in admin panels or exported to CSV/PDF.
+
+### Post-Sanitization Length Validation
+
+Binding tags validate the raw input length. After sanitization, the string may be shorter (stripped characters) or remain the same. Always re-check length constraints after sanitization:
+
+```go
+func (h *ProductHandler) Create(c *gin.Context) {
+    var req createProductRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "validation failed"})
+        return
+    }
+    // Sanitize first, then validate business length constraints
+    name := SanitizeString(req.Name)
+    if len(name) < 2 {
+        c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "name too short after sanitization"})
+        return
+    }
+    // ...
+}
+```
+
+### Header-Safe Values
+
+For values used in HTTP headers (e.g., correlation IDs, filenames in Content-Disposition), strip ALL control characters — do not preserve newlines:
+
+```go
+// SanitizeHeader strips all control characters for safe use in HTTP headers.
+// Includes Unicode controls (e.g., NEL U+0085) — stricter than SanitizeString.
+func SanitizeHeader(s string) string {
+    return strings.Map(func(r rune) rune {
+        if r < 32 || r == 127 { return -1 }
+        if unicode.IsControl(r) { return -1 }
+        return r
+    }, strings.TrimSpace(s))
+}
+```
+
+### LIKE Pattern Safety
+
+When user input is used in SQL `LIKE`/`ILIKE` queries, escape wildcard characters to prevent pattern abuse. See [repository-pattern.md](repository-pattern.md#6-query-patterns) for the `escapeLike` function.
+
+---
+
+## Rules
+
+- **Where:** Sanitize free-text strings (`Name`, `Description`) at the delivery boundary — never inside domain or usecase.
+- **Numerics:** Numeric and enum fields validated by binding tags are already safe.
+- **HTML output:** Apply `html.EscapeString` at render time (not at ingestion).
+- **SQL:** Parameterised queries (`$1, $2...`) prevent injection — never interpolate user strings into queries.
+
+---
+
+## See Also
+
+- **[error-handling.md](error-handling.md)** — Validation error formatting
+- **[layer-separation.md](layer-separation.md)** — Why sanitization lives in delivery, not domain
+- **golang-gin-api** skill — `ShouldBind*` variants, custom validators, file upload sanitization
+</file>
+
+<file path="skills/golang-gin-clean-arch/references/repository-pattern.md">
+# Repository Pattern — Deep Dive
+
+Quick overview: [SKILL.md](../SKILL.md).
+
+## Table of Contents
+
+1. [Interface Design](#1-interface-design)
+2. [SQLC Implementation](#2-sqlc-implementation)
+3. [GORM Implementation](#3-gorm-implementation)
+4. [Transactions](#4-transactions)
+5. [Connection Pooling](#5-connection-pooling)
+6. [Query Patterns](#6-query-patterns)
+7. [Testing](#7-testing)
+
+---
+
+## 1. Interface Design
+
+Defined in `internal/domain/`. One interface per aggregate root. Domain-verb methods only. No DB types in signatures.
+
+```go
+// internal/domain/product.go
+package domain
+
+import ("context"; "time"; "github.com/google/uuid")
+
+type Product struct {
+    ID          uuid.UUID
+    Name, Description string
+    Price       int64 // cents
+    Stock       int32
+    CreatedAt, UpdatedAt time.Time
+}
+
+type ProductFilter struct {
+    Name           string
+    MinPrice, MaxPrice int64
+    Page, Limit    int
+    SortBy, SortDir string
+}
+
+type ProductRepository interface {
+    FindByID(ctx context.Context, id uuid.UUID) (*Product, error)
+    FindAll(ctx context.Context, filter ProductFilter) ([]Product, error)
+    Create(ctx context.Context, p *Product) error
+    Update(ctx context.Context, p *Product) error
+    Delete(ctx context.Context, id uuid.UUID) error
+}
+```
+
+---
+
+## 2. SQLC Implementation
+
+Workflow: write SQL → `sqlc generate` → implement interface with generated `*sqlcgen.Queries`. Each query needs a `-- name: QueryName :one|:many|:exec` annotation.
+
+**sqlc.yaml:**
+```yaml
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/repository/sqlc/queries/"
+    schema:  "migrations/"
+    gen:
+      go: { package: "sqlcgen", out: "internal/repository/sqlc/sqlcgen", emit_json_tags: true }
+```
+
+**Repository:**
+```go
+// internal/repository/product_repository_sqlc.go
+package repository
+
+import ("context"; "database/sql"; "errors"; "fmt"
+    "github.com/google/uuid"; "myapp/internal/domain"; "myapp/internal/repository/sqlc/sqlcgen")
+
+type sqlcProductRepo struct{ db *sql.DB; q *sqlcgen.Queries }
+
+func NewSQLCProductRepository(db *sql.DB) domain.ProductRepository {
+    return &sqlcProductRepo{db: db, q: sqlcgen.New(db)}
+}
+func toDomain(r sqlcgen.Product) domain.Product {
+    return domain.Product{ID: r.ID, Name: r.Name, Description: r.Description,
+        Price: r.Price, Stock: r.Stock, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+}
+func (r *sqlcProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    row, err := r.q.GetProduct(ctx, id)
+    if errors.Is(err, sql.ErrNoRows) { return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound) }
+    if err != nil { return nil, fmt.Errorf("get product: %w", err) }
+    p := toDomain(row); return &p, nil
+}
+func (r *sqlcProductRepo) FindAll(ctx context.Context, f domain.ProductFilter) ([]domain.Product, error) {
+    if f.Page <= 0 { f.Page = 1 }
+    if f.Limit <= 0 { f.Limit = 20 }
+    if f.Limit > 100 { f.Limit = 100 }
+    rows, err := r.q.ListProducts(ctx, sqlcgen.ListProductsParams{
+        Limit: int32(f.Limit), Offset: int32((f.Page - 1) * f.Limit)})
+    if err != nil { return nil, fmt.Errorf("list products: %w", err) }
+    out := make([]domain.Product, len(rows))
+    for i, row := range rows { out[i] = toDomain(row) }
+    return out, nil
+}
+func (r *sqlcProductRepo) Create(ctx context.Context, p *domain.Product) error {
+    return r.q.CreateProduct(ctx, sqlcgen.CreateProductParams{ID: p.ID, Name: p.Name,
+        Description: p.Description, Price: p.Price, Stock: p.Stock, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt})
+}
+func (r *sqlcProductRepo) Update(ctx context.Context, p *domain.Product) error {
+    return r.q.UpdateProduct(ctx, sqlcgen.UpdateProductParams{ID: p.ID, Name: p.Name,
+        Description: p.Description, Price: p.Price, Stock: p.Stock, UpdatedAt: p.UpdatedAt})
+}
+func (r *sqlcProductRepo) Delete(ctx context.Context, id uuid.UUID) error { return r.q.DeleteProduct(ctx, id) }
+```
+
+---
+
+## 3. GORM Implementation
+
+Separate model with GORM tags; map to/from domain. Never annotate the domain struct.
+
+```go
+// internal/repository/product_repository_gorm.go
+package repository
+
+import ("context"; "errors"; "fmt"; "time"
+    "github.com/google/uuid"; "github.com/lib/pq"; "gorm.io/gorm"; "myapp/internal/domain")
+
+type productModel struct {
+    ID uuid.UUID `gorm:"type:uuid;primaryKey"`; Name string `gorm:"not null"`
+    Description string; Price int64 `gorm:"not null"`; Stock int32 `gorm:"not null;default:0"`
+    CreatedAt, UpdatedAt time.Time
+}
+func (productModel) TableName() string { return "products" }
+type gormProductRepo struct{ db *gorm.DB }
+func NewGORMProductRepository(db *gorm.DB) domain.ProductRepository { return &gormProductRepo{db} }
+func toModel(p *domain.Product) productModel {
+    return productModel{ID: p.ID, Name: p.Name, Description: p.Description,
+        Price: p.Price, Stock: p.Stock, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
+}
+func fromModel(m productModel) domain.Product {
+    return domain.Product{ID: m.ID, Name: m.Name, Description: m.Description,
+        Price: m.Price, Stock: m.Stock, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+}
+func (r *gormProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    var m productModel
+    if err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) { return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound) }
+        return nil, fmt.Errorf("get product: %w", err)
+    }
+    p := fromModel(m); return &p, nil
+}
+func (r *gormProductRepo) Create(ctx context.Context, p *domain.Product) error {
+    m := toModel(p)
+    if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+        var pqErr *pq.Error
+        if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+            return fmt.Errorf("product %q: %w", p.Name, domain.ErrConflict)
+        }
+        return fmt.Errorf("insert product: %w", err)
+    }
+    return nil
+}
+func (r *gormProductRepo) Update(ctx context.Context, p *domain.Product) error {
+    m := toModel(p)
+    m.UpdatedAt = time.Now().UTC()
+    result := r.db.WithContext(ctx).Model(&productModel{}).Where("id = ?", m.ID).Updates(&m)
+    if result.Error != nil { return fmt.Errorf("update product: %w", result.Error) }
+    if result.RowsAffected == 0 { return fmt.Errorf("product %s: %w", p.ID, domain.ErrNotFound) }
+    return nil
+}
+func (r *gormProductRepo) Delete(ctx context.Context, id uuid.UUID) error {
+    result := r.db.WithContext(ctx).Delete(&productModel{}, "id = ?", id)
+    if result.Error != nil { return fmt.Errorf("delete product: %w", result.Error) }
+    if result.RowsAffected == 0 { return fmt.Errorf("product %s: %w", id, domain.ErrNotFound) }
+    return nil
+}
+func (r *gormProductRepo) FindAll(ctx context.Context, f domain.ProductFilter) ([]domain.Product, error) {
+    if f.Page <= 0 { f.Page = 1 }
+    if f.Limit <= 0 { f.Limit = 20 }
+    if f.Limit > 100 { f.Limit = 100 }
+    var ms []productModel
+    err := r.db.WithContext(ctx).Limit(f.Limit).Offset((f.Page-1)*f.Limit).Find(&ms).Error
+    if err != nil { return nil, fmt.Errorf("list products: %w", err) }
+    out := make([]domain.Product, len(ms))
+    for i, m := range ms { out[i] = fromModel(m) }
+    return out, nil
+}
+```
+
+> For associations, hooks, soft-deletes — see the **golang-gin-database** skill.
+
+---
+
+## 4. Transactions
+
+`execTx` handles begin/commit/rollback; callback receives a tx-backed `*sqlcgen.Queries`.
+
+```go
+// internal/repository/tx.go
+package repository
+
+import ("context"; "database/sql"; "fmt"
+    "github.com/google/uuid"; "myapp/internal/domain"; "myapp/internal/repository/sqlc/sqlcgen")
+
+func execTx(ctx context.Context, db *sql.DB, fn func(*sqlcgen.Queries) error) error {
+    tx, err := db.BeginTx(ctx, nil)
+    if err != nil { return fmt.Errorf("begin tx: %w", err) }
+    if err := fn(sqlcgen.New(tx)); err != nil {
+        if rb := tx.Rollback(); rb != nil { return fmt.Errorf("rollback: %w (original: %v)", rb, err) }
+        return err
+    }
+    return tx.Commit()
+}
+func TransferStock(ctx context.Context, db *sql.DB, fromID, toID uuid.UUID, qty int32) error {
+    return execTx(ctx, db, func(q *sqlcgen.Queries) error {
+        src, err := q.GetProductForUpdate(ctx, fromID)
+        if err != nil { return fmt.Errorf("get source: %w", err) }
+        if src.Stock < qty { return fmt.Errorf("insufficient stock: %w", domain.ErrConflict) }
+        if err := q.DecrementStock(ctx, sqlcgen.DecrementStockParams{ID: fromID, Amount: qty}); err != nil {
+            return fmt.Errorf("decrement: %w", err)
+        }
+        return q.IncrementStock(ctx, sqlcgen.IncrementStockParams{ID: toID, Amount: qty})
+    })
+}
+```
+
+GORM: `r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { ... })` — commits on `nil`, rolls back on error.
+
+---
+
+## 5. Connection Pooling
+
+Configure once in `main.go`, not inside constructors.
+
+```go
+db.SetMaxOpenConns(25)                  // max concurrent connections
+db.SetMaxIdleConns(10)                  // idle connections kept alive
+db.SetConnMaxLifetime(5 * time.Minute)  // recycle to avoid stale TCP
+db.SetConnMaxIdleTime(2 * time.Minute)  // release idle sooner
+if err := db.PingContext(ctx); err != nil { return fmt.Errorf("db ping: %w", err) }
+```
+
+Tune `MaxOpenConns` to your DB plan's connection limit.
+
+---
+
+## 6. Query Patterns
+
+**Pagination:** clamp `f.Limit` (default 20, max 100), then `offset := (f.Page-1) * f.Limit`.
+
+**Dynamic filtering** — parameterised WHERE; never interpolate user strings:
+```go
+import ("fmt"; "strings")
+
+// escapeLike escapes LIKE/ILIKE wildcards in user input to prevent pattern abuse.
+func escapeLike(s string) string {
+    r := strings.NewReplacer("%", "\\%", "_", "\\_")
+    return r.Replace(s)
+}
+
+clauses, args, n := []string{"1=1"}, []any{}, 1
+if f.Name != "" { clauses = append(clauses, fmt.Sprintf("name ILIKE $%d", n)); args = append(args, "%"+escapeLike(f.Name)+"%"); n++ }
+if f.MinPrice > 0 { clauses = append(clauses, fmt.Sprintf("price >= $%d", n)); args = append(args, f.MinPrice); n++ }
+// append LIMIT $n OFFSET $n+1 last
+```
+
+**Safe sort whitelist** — prevents ORDER BY injection:
+```go
+var allowedSort = map[string]string{"name": "name", "price": "price", "created_at": "created_at"}
+func safeOrderBy(col, dir string) string {
+    if allowedSort[col] == "" { col = "created_at" }
+    if dir != "asc" { dir = "desc" }
+    return fmt.Sprintf("%s %s", col, dir)
+}
+```
+
+---
+
+## 7. Testing
+
+**Unit — mock interface:** See [testing-by-layer.md](testing-by-layer.md) for comprehensive mock patterns and test organization.
+
+**Integration — real DB:** Use testcontainers with `-tags=integration`. Full setup in [testing-by-layer.md](testing-by-layer.md).
+
+---
+
+## See Also
+
+- **[error-handling.md](error-handling.md)** — repo error propagation to HTTP
+- **[testing-by-layer.md](testing-by-layer.md)** — full mock patterns and coverage goals
+- **[dependency-injection.md](dependency-injection.md)** — wiring repositories into usecases
+- **golang-gin-database** skill — GORM associations, migrations, sqlx
+</file>
+
+<file path="skills/golang-gin-clean-arch/SKILL.md">
+---
+name: golang-gin-clean-arch
+description: "Clean Architecture for Go Gin APIs. Covers layer separation (entity, usecase, repository, delivery), dependency injection, repository pattern, error handling, and testable project structure. Use when organizing Go/Gin projects, implementing clean/hexagonal architecture, setting up dependency injection, or structuring code for testability."
+license: MIT
+metadata:
+  author: henriqueatila
+  version: "1.1.1"
+---
+
+# golang-gin-clean-arch — Clean Architecture for Go/Gin
+
+Build Go/Gin APIs with strict layer separation, dependency injection, and testable structure. Covers the 80% of clean architecture patterns you need daily. Works standalone; enhanced with **golang-gin-best-practices** for Gin-specific patterns.
+
+## When to Use
+
+- Starting or refactoring a Go/Gin project with clean architecture
+- Setting up dependency injection without frameworks
+- Separating business logic from framework code for testability
+
+## 6 Golden Rules
+
+**Non-negotiable. Every code generation must follow them.**
+
+1. **Gin is a detail — isolate it.** `gin` and `*gin.Context` ONLY in `internal/delivery/http`. Swap Gin for Fiber/CLI — zero business logic changes.
+2. **Database is a detail.** No SQL/GORM/SQLC in Entities or UseCases. UseCases call repository interfaces only.
+3. **Dependency Rule.** Source depends inward only. Delivery→UseCases→Entities. Entities know nothing outside.
+4. **Separate Request/Response from Domain.** Never pass Gin request structs or DB models to UseCases. Map to plain DTOs.
+5. **`main.go` is the only dirty component.** DI wiring exclusively in `cmd/api/main.go` — the only file that knows the entire system.
+6. **Export interfaces, hide implementations.** Concrete structs are unexported (`productUsecase`, `postgresProductRepo`). Constructors return the domain interface. This prevents direct instantiation and enforces the dependency rule at the compiler level.
+
+## Project Structure
+
+```
+myapp/
+├── cmd/api/main.go                    # Entry point — DI wiring
+├── internal/
+│   ├── domain/                        # Entities, interfaces, errors (innermost)
+│   ├── usecase/                       # Business logic (depends on domain only)
+│   ├── repository/                    # Data access — SQLC or GORM
+│   └── delivery/http/                 # Gin handlers + routes (outermost)
+├── config/                            # Configuration (env)
+├── migrations/                        # SQL migration files
+└── go.mod
+```
+
+## The 4 Layers
+
+`Delivery (outermost) → Repository → Usecase → Domain (innermost)`
+
+| Layer | Package | Can Import | Never Imports |
+|-------|---------|------------|---------------|
+| Domain | `internal/domain` | stdlib only | usecase, repository, delivery |
+| Usecase | `internal/usecase` | domain | repository, delivery, gin |
+| Repository | `internal/repository` | domain | delivery, gin |
+| Delivery | `internal/delivery/http` | domain | repository, usecase (concrete) |
+
+## Layer 1: Domain (Entities + Interfaces)
+
+Pure Go types. No framework dependencies. Defines what the system does, not how.
+
+```go
+// internal/domain/product.go
+package domain
+
+import (
+    "context"
+    "time"
+
+    "github.com/google/uuid"
+)
+
+type Product struct {
+    ID          uuid.UUID
+    Name        string
+    Description string
+    Price       int64 // cents
+    Stock       int32
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+
+type ProductFilter struct {
+    Name     string
+    MinPrice int64; MaxPrice int64
+    Page     int;   Limit    int
+}
+
+type ProductRepository interface {
+    FindByID(ctx context.Context, id uuid.UUID) (*Product, error)
+    FindAll(ctx context.Context, filter ProductFilter) ([]Product, error)
+    Create(ctx context.Context, p *Product) error
+    Update(ctx context.Context, p *Product) error
+    Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type ProductUsecase interface {
+    GetProduct(ctx context.Context, id uuid.UUID) (*Product, error)
+    ListProducts(ctx context.Context, filter ProductFilter) ([]Product, error)
+    CreateProduct(ctx context.Context, input CreateProductInput) (*Product, error)
+    UpdateProduct(ctx context.Context, id uuid.UUID, input UpdateProductInput) (*Product, error)
+    DeleteProduct(ctx context.Context, id uuid.UUID) error
+}
+
+type CreateProductInput struct {
+    Name        string
+    Description string
+    Price       int64
+    Stock       int32
+}
+type UpdateProductInput struct {
+    Name *string; Description *string
+    Price *int64; Stock       *int32
+}
+```
+
+Domain errors — see [Error Flow](#error-flow-across-layers) below.
+
+## Layer 2: Usecase (Business Logic)
+
+Orchestrates domain operations. Depends only on domain interfaces.
+
+```go
+// internal/usecase/product_usecase.go
+package usecase
+
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "github.com/google/uuid"
+    "myapp/internal/domain"
+)
+
+type productUsecase struct {
+    repo domain.ProductRepository
+}
+
+func NewProductUsecase(repo domain.ProductRepository) domain.ProductUsecase {
+    return &productUsecase{repo: repo}
+}
+
+func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateProductInput) (*domain.Product, error) {
+    if input.Price <= 0 {
+        return nil, fmt.Errorf("create product: %w", domain.ErrValidation)
+    }
+
+    product := &domain.Product{
+        ID:          uuid.New(),
+        Name:        input.Name,
+        Description: input.Description,
+        Price:       input.Price,
+        Stock:       input.Stock,
+        CreatedAt:   time.Now().UTC(),
+        UpdatedAt:   time.Now().UTC(),
+    }
+
+    if err := u.repo.Create(ctx, product); err != nil {
+        return nil, fmt.Errorf("create product: %w", err)
+    }
+
+    return product, nil
+}
+
+func (u *productUsecase) GetProduct(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    product, err := u.repo.FindByID(ctx, id)
+    if err != nil {
+        return nil, fmt.Errorf("get product %s: %w", id, err)
+    }
+    return product, nil
+}
+
+// ListProducts, UpdateProduct, DeleteProduct follow the same pattern.
+```
+
+**Key:** Constructor returns interface (`domain.ProductUsecase`), hides struct. Usecase never imports `gin`, `sql`, or `gorm`.
+
+## Layer 3: Repository (Data Access)
+
+Implements domain interfaces with concrete database technology.
+
+```go
+// internal/repository/product_repository.go
+package repository
+
+import (
+    "context"
+    "database/sql"
+    "errors"
+    "fmt"
+
+    "github.com/google/uuid"
+    "myapp/internal/domain"
+)
+
+type postgresProductRepo struct {
+    db *sql.DB
+}
+
+func NewProductRepository(db *sql.DB) domain.ProductRepository {
+    return &postgresProductRepo{db: db}
+}
+
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+    var p domain.Product
+    err := r.db.QueryRowContext(ctx,
+        `SELECT id, name, description, price, stock, created_at, updated_at
+         FROM products WHERE id = $1`, id,
+    ).Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Stock, &p.CreatedAt, &p.UpdatedAt)
+
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound)
+    }
+    if err != nil {
+        return nil, fmt.Errorf("query product %s: %w", id, err)
+    }
+    return &p, nil
+}
+
+func (r *postgresProductRepo) Create(ctx context.Context, p *domain.Product) error {
+    _, err := r.db.ExecContext(ctx,
+        `INSERT INTO products (id, name, description, price, stock, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        p.ID, p.Name, p.Description, p.Price, p.Stock, p.CreatedAt, p.UpdatedAt,
+    )
+    if err != nil {
+        return fmt.Errorf("insert product: %w", err)
+    }
+    return nil
+}
+```
+
+Repository wraps `sql.ErrNoRows` → `domain.ErrNotFound`. Database errors never leak to usecase.
+
+For SQLC and GORM implementations, see [references/repository-pattern.md](references/repository-pattern.md).
+
+## Layer 4: Delivery (HTTP/Gin Handlers)
+
+Thin handlers: bind → call usecase → respond. No business logic.
+
+```go
+// internal/delivery/http/product_handler.go
+package http
+
+import (
+    "errors"
+    "log/slog"
+    "net/http"
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
+    "myapp/internal/domain"
+)
+
+type ProductHandler struct {
+    uc     domain.ProductUsecase
+    logger *slog.Logger
+}
+
+func NewProductHandler(uc domain.ProductUsecase, logger *slog.Logger) *ProductHandler {
+    return &ProductHandler{uc: uc, logger: logger}
+}
+
+type createProductRequest struct {
+    Name        string `json:"name"        binding:"required,min=2,max=200"`
+    Description string `json:"description" binding:"max=1000"`
+    Price       int64  `json:"price"       binding:"required,gt=0"`
+    Stock       int32  `json:"stock"       binding:"min=0"`
+}
+
+type productResponse struct {
+    ID          string `json:"id"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+    PriceCents  int64  `json:"price_cents"`
+    Stock       int32  `json:"stock"`
+    CreatedAt   string `json:"created_at"`
+    UpdatedAt   string `json:"updated_at"`
+}
+
+func toProductResponse(p *domain.Product) productResponse {
+    return productResponse{
+        ID: p.ID.String(), Name: p.Name, Description: p.Description,
+        PriceCents: p.Price, Stock: p.Stock,
+        CreatedAt: p.CreatedAt.Format(time.RFC3339),
+        UpdatedAt: p.UpdatedAt.Format(time.RFC3339),
+    }
+}
+
+func (h *ProductHandler) Create(c *gin.Context) {
+    var req createProductRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "validation failed"})
+        return
+    }
+
+    product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInput{
+        Name:        req.Name,
+        Description: req.Description,
+        Price:       req.Price,
+        Stock:       req.Stock,
+    })
+    if err != nil {
+        handleError(c, err, h.logger)
+        return
+    }
+
+    c.JSON(http.StatusCreated, toProductResponse(product))
+}
+
+func RegisterProductRoutes(rg *gin.RouterGroup, h *ProductHandler) {
+    p := rg.Group("/products")
+    p.POST("", h.Create)
+    p.GET("/:id", h.GetByID)
+    p.GET("", h.List)
+    p.PUT("/:id", h.Update)
+    p.DELETE("/:id", h.Delete)
+}
+```
+
+## Dependency Injection Bootstrap
+
+Wire everything in `main.go` — no framework, explicit and debuggable.
+
+```go
+// cmd/api/main.go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "errors"
+    "log/slog"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+
+    "github.com/gin-gonic/gin"
+    _ "github.com/lib/pq"
+
+    "myapp/config"
+    delivery "myapp/internal/delivery/http"
+    "myapp/internal/repository"
+    "myapp/internal/usecase"
+)
+
+func main() {
+    logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+    cfg, err := config.Load()
+    if err != nil { logger.Error("load config", "error", err); os.Exit(1) }
+
+    db, err := sql.Open("postgres", cfg.DatabaseURL)
+    if err != nil { logger.Error("open db", "error", err); os.Exit(1) }
+    defer db.Close()
+    db.SetMaxOpenConns(25)              // production: use cfg.DBMaxOpenConns
+    db.SetMaxIdleConns(10)              // production: use cfg.DBMaxIdleConns
+    db.SetConnMaxLifetime(5 * time.Minute) // production: use cfg.DBConnMaxLifetime
+    if err := db.PingContext(context.Background()); err != nil {
+        logger.Error("ping db", "error", err); os.Exit(1)
+    }
+
+    // DI wiring: repo → usecase → handler
+    productRepo := repository.NewProductRepository(db)
+    productUC := usecase.NewProductUsecase(productRepo)
+    productHandler := delivery.NewProductHandler(productUC, logger)
+
+    r := gin.New()
+    r.Use(gin.Recovery())
+    delivery.RegisterProductRoutes(r.Group("/api/v1"), productHandler)
+
+    srv := &http.Server{Addr: cfg.Addr, Handler: r,
+        ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+    go func() {
+        if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+            logger.Error("server error", "error", err); os.Exit(1)
+        }
+    }()
+
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    defer cancel()
+    if err := srv.Shutdown(ctx); err != nil { logger.Error("shutdown", "error", err) }
+}
+```
+
+**DI flow:** `config → db → repository → usecase → handler → router → server`
+
+For DI container pattern and scaling, see [references/dependency-injection.md](references/dependency-injection.md).
+
+## Error Flow Across Layers
+
+```
+Repository          Usecase             Delivery
+sql.ErrNoRows   →   domain.ErrNotFound  →  404 JSON
+unique violation →   domain.ErrConflict  →  409 JSON
+business rule    →   domain.ErrValidation → 422 JSON
+unknown          →   wrapped error       →  500 JSON (logged)
+```
+
+```go
+// internal/domain/errors.go — NO Gin imports here (Rule 1)
+package domain
+
+type AppError struct {
+    Code    int
+    Message string
+    Detail  string
+}
+
+func (e *AppError) Error() string { return e.Message }
+
+var (
+    ErrNotFound   = &AppError{Code: 404, Message: "not found"}
+    ErrConflict   = &AppError{Code: 409, Message: "already exists"}
+    ErrValidation = &AppError{Code: 422, Message: "validation failed"}
+    ErrForbidden  = &AppError{Code: 403, Message: "forbidden"}
+)
+```
+
+> **Pragmatic trade-off:** `Code` aligns with HTTP status codes for simplicity. In non-HTTP contexts (CLI, gRPC), map these codes in the respective delivery layer. For strict domain purity, replace with an `ErrorKind` enum — see [error-handling.md](references/error-handling.md).
+
+Error-to-HTTP mapping lives in the **delivery layer** (not domain — Gin is a detail):
+```go
+// internal/delivery/http/errors.go — Gin allowed here (outermost layer)
+package http
+
+import (
+    "errors"
+    "log/slog"
+    "net/http"
+
+    "github.com/gin-gonic/gin"
+    "myapp/internal/domain"
+)
+
+func handleError(c *gin.Context, err error, logger *slog.Logger) {
+    var appErr *domain.AppError
+    if errors.As(err, &appErr) {
+        resp := gin.H{"error": appErr.Message}
+        if appErr.Code < 500 && appErr.Detail != "" { resp["detail"] = appErr.Detail }
+        c.JSON(appErr.Code, resp)
+        return
+    }
+    logger.ErrorContext(c.Request.Context(), "unhandled error", "error", err)
+    c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+}
+```
+
+For detailed error patterns, see [references/error-handling.md](references/error-handling.md).
+
+## Input Sanitization
+
+Binding tags validate structure but **do not sanitize content**. Sanitize free-text strings (`SanitizeString`) at the delivery boundary after `ShouldBind*` succeeds — before mapping to domain input. SQL parameters (`$1, $2...`) prevent injection. See [references/input-sanitization.md](references/input-sanitization.md).
+
+## Quick Reference
+
+| Question | Answer |
+|----------|--------|
+| New entity? | `internal/domain/` |
+| Business logic? | `internal/usecase/` |
+| SQL queries? | `internal/repository/` |
+| HTTP handlers? | `internal/delivery/http/` |
+| Interfaces? | `internal/domain/` (always) |
+| DI wiring? | `cmd/api/main.go` (only dirty place) |
+
+## Reference Files
+
+- **[references/layer-separation.md](references/layer-separation.md)** — Layer responsibilities, package-by-component, model duplication pragmatism
+- **[references/layer-separation-antipatterns.md](references/layer-separation-antipatterns.md)** — Anti-patterns (bad→good), migration guide
+- **[references/dependency-injection.md](references/dependency-injection.md)** — Manual DI, DI container pattern, testing with DI
+- **[references/dependency-injection-alternatives.md](references/dependency-injection-alternatives.md)** — Scaling DI, Wire/Fx alternatives
+- **[references/repository-pattern.md](references/repository-pattern.md)** — SQLC, GORM, transactions, query patterns
+- **[references/error-handling.md](references/error-handling.md)** — Domain errors, propagation, HTTP mapping, validation errors
+- **[references/input-sanitization.md](references/input-sanitization.md)** — Sanitize untrusted strings at delivery boundary
+- **[references/testing-by-layer.md](references/testing-by-layer.md)** — Mock strategy (boundaries only), testcontainers, table-driven tests, coverage
+- **[references/project-scaffolding.md](references/project-scaffolding.md)** — From-scratch setup, Makefile, configuration, graceful shutdown
+
+## Production Checklist
+
+This skill covers architecture and code-level security. For production deployment, combine with **golang-gin-best-practices**:
+
+- [ ] Rate limiting + CORS middleware → **golang-gin-api** (`references/middleware.md`)
+- [ ] JWT auth + RBAC → **golang-gin-auth** (`references/jwt-patterns.md`)
+- [ ] Request ID + timeout middleware → **golang-gin-api** (`references/middleware.md`)
+- [ ] Health check with DB ping → **golang-gin-deploy** (`references/kubernetes.md`)
+- [ ] Multi-stage Dockerfile (distroless) → **golang-gin-deploy** (`references/dockerfile.md`)
+- [ ] OpenTelemetry tracing → **golang-gin-deploy**
+
+## Cross-Skill References (golang-gin-best-practices)
+
+- **golang-gin-api** → Delivery: `ShouldBind*` variants, custom validators, file uploads, CORS/rate-limit, request ID middleware
+- **golang-gin-auth** → Delivery: JWT middleware, token refresh/blacklist, RBAC with `RequireRole`
+- **golang-gin-database** → Repository: GORM associations/hooks/soft-deletes, sqlx, golang-migrate
+- **golang-gin-testing** → All layers: `httptest`, table-driven handler tests, testcontainers, e2e with docker-compose
+- **golang-gin-deploy** → Infra: Dockerfile (distroless), docker-compose + Air, Kubernetes manifests, OpenTelemetry
+</file>
+
+</files>
