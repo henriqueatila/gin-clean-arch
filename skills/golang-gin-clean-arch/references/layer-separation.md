@@ -4,36 +4,26 @@ Deep-dive on the 4 clean architecture layers: dependency rule, each layer's resp
 
 Companion: [layer-separation-antipatterns.md](layer-separation-antipatterns.md) — anti-patterns and migration guide.
 
-## Table of Contents
-
-1. [Dependency Rule Deep Dive](#dependency-rule-deep-dive)
-2. [Entity Layer in Detail](#entity-layer-in-detail)
-3. [Usecase Layer in Detail](#usecase-layer-in-detail)
-4. [Repository Layer in Detail](#repository-layer-in-detail)
-5. [Delivery Layer in Detail](#delivery-layer-in-detail)
-
----
-
 ## Dependency Rule Deep Dive
 
 **Dependencies point inward only.** No inner layer may import an outer layer.
 
 ```
-  ┌────────────────────────────────────────────┐
-  │  Delivery (internal/delivery/http)         │  ← outermost
-  │         imports ↓                          │
-  │  ┌──────────────────────────────────────┐  │
-  │  │  Repository (internal/repository)   │  │
-  │  │         imports ↓                   │  │
-  │  │  ┌────────────────────────────────┐  │  │
-  │  │  │  Usecase (internal/usecase)   │  │  │
-  │  │  │         imports ↓             │  │  │
-  │  │  │  ┌────────────────────────┐   │  │  │
-  │  │  │  │  Domain (innermost)   │   │  │  │
-  │  │  │  └────────────────────────┘   │  │  │
-  │  │  └────────────────────────────────┘  │  │
-  │  └──────────────────────────────────────┘  │
-  └────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────┐
+  │              Outer Layers (Adapters)              │
+  │  ┌─────────────────┐  ┌───────────────────────┐  │
+  │  │    Delivery      │  │     Repository        │  │
+  │  │  (HTTP/Gin)      │  │  (Postgres/SQLC)      │  │
+  │  └────────┬─────────┘  └──────────┬────────────┘  │
+  │           │ imports                │ imports        │
+  │  ┌────────▼────────────────────────▼────────────┐  │
+  │  │           Usecase (business logic)           │  │
+  │  │                  imports ↓                   │  │
+  │  │  ┌────────────────────────────────────────┐  │  │
+  │  │  │        Domain (entities, interfaces)   │  │  │
+  │  │  └────────────────────────────────────────┘  │  │
+  │  └──────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────┘
 
   X  Domain → any outer layer    FORBIDDEN
   X  Usecase → repository pkg    FORBIDDEN
@@ -41,14 +31,14 @@ Companion: [layer-separation-antipatterns.md](layer-separation-antipatterns.md) 
   X  Repository → delivery       FORBIDDEN
 ```
 
-**How interfaces enforce this:** Domain defines `ProductRepository` and `ProductUsecase`. Outer layers implement them. Inner layers hold only the interface — never the concrete struct. The dependency arrow points *toward* domain in every case.
-
 | Layer | Package | Allowed imports | Forbidden |
 |-------|---------|-----------------|-----------|
 | Domain | `internal/domain` | stdlib only | all internal pkgs |
 | Usecase | `internal/usecase` | `domain` | `repository`, `delivery`, `gin` |
 | Repository | `internal/repository` | `domain`, `database/sql` | `delivery`, `gin` |
 | Delivery | `internal/delivery/http` | `domain` | `repository`, `usecase` (concrete) |
+
+**How:** Domain defines `ProductRepository` and `ProductUsecase` interfaces. Outer layers implement them. Inner layers depend on the interface — never the concrete struct.
 
 ---
 
@@ -73,9 +63,9 @@ type Product struct {
 }
 
 func (p *Product) Validate() error {
-    if p.Name == ""  { return errors.New("product name is required") }
-    if p.Price <= 0  { return errors.New("product price must be positive") }
-    if p.Stock < 0   { return errors.New("product stock cannot be negative") }
+    if p.Name == ""  { return fmt.Errorf("product name is required: %w", ErrValidation) }
+    if p.Price <= 0  { return fmt.Errorf("product price must be positive: %w", ErrValidation) }
+    if p.Stock < 0   { return fmt.Errorf("product stock cannot be negative: %w", ErrValidation) }
     return nil
 }
 
@@ -117,7 +107,7 @@ func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateP
         CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
     }
     if err := p.Validate(); err != nil {
-        return nil, fmt.Errorf("create product: %w", domain.ErrValidation)
+        return nil, fmt.Errorf("create product: %v: %w", err, domain.ErrValidation)
     }
     if err := u.repo.Create(ctx, p); err != nil {
         return nil, fmt.Errorf("create product: %w", err)
@@ -129,13 +119,17 @@ func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateP
 **Multi-repo usecases** inject multiple interfaces. Each dependency comes from `internal/domain` — the concrete packages are never referenced:
 
 ```go
+// domain.WarehouseRepository — hypothetical interface for this example:
+//   type WarehouseRepository interface {
+//       RecordTransfer(ctx context.Context, from, to uuid.UUID, qty int32) error
+//   }
 type transferStockUsecase struct {
     productRepo   domain.ProductRepository
     warehouseRepo domain.WarehouseRepository
 }
 
-// In production: define a TransferStockUsecase interface in domain and return it.
-// Simplified here — returns concrete for brevity.
+// Production: define TransferStockUsecase interface in domain and return it here.
+// Returning concrete type below violates Golden Rule 6 — shown for brevity only.
 func NewTransferStockUsecase(p domain.ProductRepository, w domain.WarehouseRepository) *transferStockUsecase {
     return &transferStockUsecase{productRepo: p, warehouseRepo: w}
 }
@@ -161,15 +155,7 @@ func (u *transferStockUsecase) Execute(ctx context.Context, src, dst uuid.UUID, 
 
 Implements domain interfaces with a specific database technology. The rest of the application never knows which database is used.
 
-**One repository per aggregate root.** `Product` owns its own `ProductRepository`. Never mix two aggregates into one repository.
-
-| Method | SQL |
-|--------|-----|
-| `FindByID` | `SELECT ... WHERE id = $1` |
-| `FindAll` | `SELECT ... LIMIT $1 OFFSET $2` |
-| `Create` | `INSERT INTO ...` |
-| `Update` | `UPDATE ... SET ...` |
-| `Delete` | `DELETE FROM ...` or soft-delete |
+**One repository per aggregate root.** `Product` owns its own `ProductRepository`. Never mix two aggregates into one repository. Standard methods: `FindByID`, `FindAll`, `Create`, `Update`, `Delete`.
 
 ```go
 // internal/repository/postgres_product_repository.go
@@ -217,7 +203,7 @@ Handlers are thin adapters: bind → call usecase → respond. Zero business log
 
 **DTOs** decouple HTTP wire format from domain model. Domain structs never carry JSON tags or `binding:` tags.
 
-**Pragmatic note on model duplication:** Strict separation creates a "mapping tax" — `createProductRequest` → `CreateProductInput` → `Product` → `productModel` → `productResponse`. This cost is justified when business rules exist between layers. For pure CRUD endpoints with no business logic, you may skip the usecase input type and map directly from request DTO to domain entity in the handler — but never skip the response DTO (it controls what the client sees) and never add `json`/`binding` tags to domain structs.
+**Mapping tax:** `createProductRequest` → `CreateProductInput` → `Product` → `productResponse`. Justified when business rules exist between layers. For pure CRUD you may map request DTO directly to domain entity in the handler, but never skip the response DTO and never add `json`/`binding` tags to domain structs.
 
 ```go
 // internal/delivery/http/product_dto.go
@@ -237,6 +223,7 @@ type productResponse struct {
     PriceCents  int64  `json:"price_cents"`
     Stock       int32  `json:"stock"`
     CreatedAt   string `json:"created_at"`
+    UpdatedAt   string `json:"updated_at"`
 }
 ```
 
@@ -265,7 +252,8 @@ func toProductResponse(p *domain.Product) productResponse {
     return productResponse{
         ID: p.ID.String(), Name: p.Name, Description: p.Description,
         PriceCents: p.Price, Stock: p.Stock,
-        CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
+        CreatedAt: p.CreatedAt.Format(time.RFC3339),
+        UpdatedAt: p.UpdatedAt.Format(time.RFC3339),
     }
 }
 
@@ -294,27 +282,9 @@ func (h *ProductHandler) Create(c *gin.Context) {
 
 ## Package by Layer vs Package by Component
 
-This skill defaults to **package-by-layer** (`internal/domain`, `internal/usecase`, `internal/repository`, `internal/delivery/http`). This is the standard Go clean architecture layout and works well for small-to-medium projects.
+This skill uses **package-by-layer** (`internal/domain`, `internal/usecase`, `internal/repository`, `internal/delivery/http`). For larger codebases (3+ aggregates), consider **package-by-component** — group all code for one aggregate in a single package, using unexported types for encapsulation.
 
-For larger codebases with multiple bounded contexts, consider **package-by-component** (Simon Brown's "The Missing Chapter"):
-
-```
-internal/
-├── product/           # All product code — private implementations
-│   ├── entity.go      # Product struct (unexported details)
-│   ├── usecase.go     # productUsecase (unexported)
-│   ├── repository.go  # postgresProductRepo (unexported)
-│   ├── handler.go     # ProductHandler (exported — entry point)
-│   └── product.go     # Exported interfaces + constructor
-├── order/             # Same pattern for Order
-└── shared/            # Shared domain types, errors
-```
-
-**Advantages:** Stronger encapsulation — unexported types within a package prevent callers from bypassing architecture layers. A handler cannot call a repository directly because the struct is unexported outside the package.
-
-**Trade-off:** Harder to navigate when you want to see "all repositories" at a glance. Go's package system enforces visibility boundaries, so the compiler blocks violations automatically.
-
-**Recommendation:** Start with package-by-layer (this skill's default). Migrate to package-by-component when you have 3+ aggregate roots and find developers bypassing the dependency rule.
+**Start with package-by-layer.** Migrate to package-by-component when developers bypass the dependency rule.
 
 ---
 

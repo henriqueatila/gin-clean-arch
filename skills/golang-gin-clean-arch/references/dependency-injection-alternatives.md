@@ -92,6 +92,7 @@ import (
     "net/http"
     "os"
 
+    "github.com/gin-gonic/gin"
     _ "github.com/lib/pq"
     "go.uber.org/fx"
 
@@ -124,6 +125,13 @@ func openDatabase() (*sql.DB, error) {
         return nil, err
     }
     return db, nil
+}
+
+func newRouter(handler *delivery.ProductHandler) *gin.Engine {
+    r := gin.New()
+    r.Use(gin.Recovery())
+    delivery.RegisterProductRoutes(r.Group("/api/v1"), handler)
+    return r
 }
 
 func registerServer(handler *delivery.ProductHandler, logger *slog.Logger, lc fx.Lifecycle) {

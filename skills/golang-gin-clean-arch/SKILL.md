@@ -80,11 +80,9 @@ type Product struct {
 }
 
 type ProductFilter struct {
-    Name   string
-    MinPrice int64
-    MaxPrice int64
-    Page     int
-    Limit    int
+    Name     string
+    MinPrice int64; MaxPrice int64
+    Page     int;   Limit    int
 }
 
 type ProductRepository interface {
@@ -109,12 +107,9 @@ type CreateProductInput struct {
     Price       int64
     Stock       int32
 }
-
 type UpdateProductInput struct {
-    Name        *string
-    Description *string
-    Price       *int64
-    Stock       *int32
+    Name *string; Description *string
+    Price *int64; Stock       *int32
 }
 ```
 
@@ -251,6 +246,7 @@ import (
     "errors"
     "log/slog"
     "net/http"
+    "time"
 
     "github.com/gin-gonic/gin"
     "github.com/google/uuid"
@@ -280,13 +276,15 @@ type productResponse struct {
     PriceCents  int64  `json:"price_cents"`
     Stock       int32  `json:"stock"`
     CreatedAt   string `json:"created_at"`
+    UpdatedAt   string `json:"updated_at"`
 }
 
 func toProductResponse(p *domain.Product) productResponse {
     return productResponse{
         ID: p.ID.String(), Name: p.Name, Description: p.Description,
         PriceCents: p.Price, Stock: p.Stock,
-        CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
+        CreatedAt: p.CreatedAt.Format(time.RFC3339),
+        UpdatedAt: p.UpdatedAt.Format(time.RFC3339),
     }
 }
 
@@ -312,14 +310,12 @@ func (h *ProductHandler) Create(c *gin.Context) {
 }
 
 func RegisterProductRoutes(rg *gin.RouterGroup, h *ProductHandler) {
-    products := rg.Group("/products")
-    {
-        products.POST("", h.Create)
-        products.GET("/:id", h.GetByID)
-        products.GET("", h.List)
-        products.PUT("/:id", h.Update)
-        products.DELETE("/:id", h.Delete)
-    }
+    p := rg.Group("/products")
+    p.POST("", h.Create)
+    p.GET("/:id", h.GetByID)
+    p.GET("", h.List)
+    p.PUT("/:id", h.Update)
+    p.DELETE("/:id", h.Delete)
 }
 ```
 
@@ -359,9 +355,9 @@ func main() {
     db, err := sql.Open("postgres", cfg.DatabaseURL)
     if err != nil { logger.Error("open db", "error", err); os.Exit(1) }
     defer db.Close()
-    db.SetMaxOpenConns(25)
-    db.SetMaxIdleConns(10)
-    db.SetConnMaxLifetime(5 * time.Minute)
+    db.SetMaxOpenConns(25)              // production: use cfg.DBMaxOpenConns
+    db.SetMaxIdleConns(10)              // production: use cfg.DBMaxIdleConns
+    db.SetConnMaxLifetime(5 * time.Minute) // production: use cfg.DBConnMaxLifetime
     if err := db.PingContext(context.Background()); err != nil {
         logger.Error("ping db", "error", err); os.Exit(1)
     }
@@ -375,7 +371,7 @@ func main() {
     r.Use(gin.Recovery())
     delivery.RegisterProductRoutes(r.Group("/api/v1"), productHandler)
 
-    srv := &http.Server{Addr: cfg.Port, Handler: r,
+    srv := &http.Server{Addr: cfg.Addr, Handler: r,
         ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
     go func() {
         if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -386,7 +382,7 @@ func main() {
     quit := make(chan os.Signal, 1)
     signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
     <-quit
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
     if err := srv.Shutdown(ctx); err != nil { logger.Error("shutdown", "error", err) }
 }
@@ -432,6 +428,15 @@ Error-to-HTTP mapping lives in the **delivery layer** (not domain — Gin is a d
 ```go
 // internal/delivery/http/errors.go — Gin allowed here (outermost layer)
 package http
+
+import (
+    "errors"
+    "log/slog"
+    "net/http"
+
+    "github.com/gin-gonic/gin"
+    "myapp/internal/domain"
+)
 
 func handleError(c *gin.Context, err error, logger *slog.Logger) {
     var appErr *domain.AppError

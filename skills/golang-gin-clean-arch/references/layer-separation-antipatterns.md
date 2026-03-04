@@ -16,7 +16,7 @@ Companion file: [layer-separation.md](layer-separation.md) — dependency rule, 
 func (h *ProductHandler) Create(c *gin.Context) {
     var req createProductRequest
     if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}) // never expose raw errors
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}) // BAD: 400, raw error, leaks internals
         return
     }
     if req.Price < 100 { // business rule leaking into delivery layer
@@ -61,7 +61,7 @@ type Product struct {
 
 ```go
 // BAD — repository knows about HTTP status codes
-func (r *postgresProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
     // ...
     if errors.Is(err, sql.ErrNoRows) {
         return nil, fmt.Errorf("404 not found") // HTTP concept in data layer
@@ -69,7 +69,7 @@ func (r *postgresProductRepository) FindByID(ctx context.Context, id uuid.UUID) 
 }
 
 // GOOD — repository returns domain errors; delivery layer maps to HTTP
-func (r *postgresProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
+func (r *postgresProductRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
     // ...
     if errors.Is(err, sql.ErrNoRows) {
         return nil, fmt.Errorf("product %s: %w", id, domain.ErrNotFound)

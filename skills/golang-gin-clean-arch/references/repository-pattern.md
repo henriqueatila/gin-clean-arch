@@ -160,7 +160,8 @@ func (r *gormProductRepo) Create(ctx context.Context, p *domain.Product) error {
 }
 func (r *gormProductRepo) Update(ctx context.Context, p *domain.Product) error {
     m := toModel(p)
-    result := r.db.WithContext(ctx).Save(&m)
+    m.UpdatedAt = time.Now().UTC()
+    result := r.db.WithContext(ctx).Model(&productModel{}).Where("id = ?", m.ID).Updates(&m)
     if result.Error != nil { return fmt.Errorf("update product: %w", result.Error) }
     if result.RowsAffected == 0 { return fmt.Errorf("product %s: %w", p.ID, domain.ErrNotFound) }
     return nil
@@ -197,7 +198,7 @@ func (r *gormProductRepo) FindAll(ctx context.Context, f domain.ProductFilter) (
 package repository
 
 import ("context"; "database/sql"; "fmt"
-    "myapp/internal/domain"; "myapp/internal/repository/sqlc/sqlcgen")
+    "github.com/google/uuid"; "myapp/internal/domain"; "myapp/internal/repository/sqlc/sqlcgen")
 
 func execTx(ctx context.Context, db *sql.DB, fn func(*sqlcgen.Queries) error) error {
     tx, err := db.BeginTx(ctx, nil)
@@ -273,47 +274,9 @@ func safeOrderBy(col, dir string) string {
 
 ## 7. Testing
 
-**Unit — mock interface (testify/mock):**
-```go
-type MockProductRepository struct{ mock.Mock }
-func (m *MockProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
-    args := m.Called(ctx, id)
-    if args.Get(0) == nil { return nil, args.Error(1) }
-    return args.Get(0).(*domain.Product), args.Error(1)
-}
-// Remaining methods: return m.Called(...).Error(0) or (Get(0), Error(1))
+**Unit — mock interface:** See [testing-by-layer.md](testing-by-layer.md) for comprehensive mock patterns and test organization.
 
-func TestGetProduct_NotFound(t *testing.T) {
-    repo, id := new(MockProductRepository), uuid.New()
-    repo.On("FindByID", mock.Anything, id).Return(nil, domain.ErrNotFound)
-    _, err := usecase.NewProductUsecase(repo).GetProduct(context.Background(), id)
-    assert.True(t, errors.Is(err, domain.ErrNotFound))
-    repo.AssertExpectations(t)
-}
-```
-
-**Integration — testcontainers (`-tags=integration`):**
-```go
-//go:build integration
-func TestProductRepository_CreateAndFind(t *testing.T) {
-    ctx := context.Background()
-    pgc, err := postgres.RunContainer(ctx,
-        // test-only credentials — testcontainers creates an ephemeral DB
-        postgres.WithDatabase("testdb"), postgres.WithUsername("test"), postgres.WithPassword("test"))
-    require.NoError(t, err)
-    t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-    connStr, _ := pgc.ConnectionString(ctx, "sslmode=disable")
-    db, _ := sql.Open("postgres", connStr); defer db.Close()
-    repo := repository.NewProductRepository(db) // run migration DDL first
-    p := &domain.Product{ID: uuid.New(), Name: "Widget", Price: 999, Stock: 10,
-        CreatedAt: time.Now(), UpdatedAt: time.Now()}
-    require.NoError(t, repo.Create(ctx, p))
-    found, err := repo.FindByID(ctx, p.ID)
-    require.NoError(t, err); assert.Equal(t, p.Name, found.Name)
-}
-```
-
-Run: `go test -tags=integration ./internal/repository/...`
+**Integration — real DB:** Use testcontainers with `-tags=integration`. Full setup in [testing-by-layer.md](testing-by-layer.md).
 
 ---
 

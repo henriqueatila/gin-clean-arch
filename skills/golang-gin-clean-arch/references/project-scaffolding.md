@@ -278,10 +278,6 @@ BINARY := bin/api
 MAIN   := ./cmd/api
 MIGS   := ./migrations
 DB_URL ?= $(shell grep DATABASE_URL .env | cut -d= -f2-)
-
-.PHONY: build run dev test test-integration coverage lint \
-        migrate-up migrate-down migrate-create mocks sqlc clean
-
 build:            ; go build -o $(BINARY) $(MAIN)
 run: build        ; $(BINARY)
 dev:              ; air
@@ -295,24 +291,10 @@ migrate-create:
 	@read -p "Name: " n; migrate create -ext sql -dir $(MIGS) -seq $$n
 mocks:            ; go generate ./internal/domain/...
 sqlc:             ; sqlc generate
-clean:            ; rm -rf bin/ coverage.out coverage.html
 ```
 
 ## Recommended Dependencies
 
-| Purpose | Package |
-|---|---|
-| HTTP framework | `github.com/gin-gonic/gin` v1.10+ |
-| UUID | `github.com/google/uuid` |
-| Postgres driver | `github.com/lib/pq` or `github.com/jackc/pgx/v5` |
-| Config/env | `github.com/ilyakaznacheev/cleanenv` |
-| SQL codegen | `github.com/sqlc-dev/sqlc` |
-| ORM (optional) | `gorm.io/gorm` |
-| Test assertions | `github.com/stretchr/testify` |
-| Mock generation | `github.com/vektra/mockery/v2` |
-| DB containers | `github.com/testcontainers/testcontainers-go` |
-| Migrations | `github.com/golang-migrate/migrate/v4` |
-| Live reload (dev) | `github.com/air-verse/air` |
-| Linter | `github.com/golangci/golangci-lint` |
+**Core:** `gin` (v1.10+), `uuid`, `lib/pq` or `pgx/v5`, `cleanenv`, `sqlc` (or `gorm`). **Testing:** `testify`, `mockery/v2`, `testcontainers-go`, `golang-migrate/v4`. **Dev:** `air` (live reload), `golangci-lint`.
 
 **See also:** [layer-separation.md](layer-separation.md) · [dependency-injection.md](dependency-injection.md) · [repository-pattern.md](repository-pattern.md) · [error-handling.md](error-handling.md) · [testing-by-layer.md](testing-by-layer.md)

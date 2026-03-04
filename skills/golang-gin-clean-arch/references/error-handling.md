@@ -73,7 +73,7 @@ Translate every DB-specific error to a domain error before returning.
 // internal/repository/product_repository.go
 package repository
 
-import ("context"; "database/sql"; "errors"; "fmt"; "strings"
+import ("context"; "database/sql"; "errors"; "fmt"
     "github.com/google/uuid"; "github.com/lib/pq"; "myapp/internal/domain")
 
 type postgresProductRepo struct{ db *sql.DB }
@@ -106,9 +106,7 @@ func wrapDBError(op string, err error) error {
         case "23503": return fmt.Errorf("%s: %w", op, domain.ErrNotFound)  // foreign_key_violation
         }
     }
-    if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "timeout") {
-        return fmt.Errorf("%s: db unavailable: %w", op, err)
-    }
+    // Unrecognized DB errors: wrap with operation context for debugging.
     return fmt.Errorf("%s: %w", op, err)
 }
 ```
@@ -140,7 +138,7 @@ func (u *productUsecase) CreateProduct(ctx context.Context, input domain.CreateP
         return nil, fmt.Errorf("price must be greater than zero: %w", domain.ErrValidation)
     }
     p := &domain.Product{ID: uuid.New(), Name: input.Name, Description: input.Description,
-        Price: input.Price, Stock: input.Stock, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+        Price: input.Price, Stock: input.Stock, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
     if err := u.repo.Create(ctx, p); err != nil { return nil, fmt.Errorf("create product: %w", err) }
     return p, nil
 }
@@ -153,7 +151,7 @@ func (u *productUsecase) UpdateProduct(ctx context.Context, id uuid.UUID, input 
         p.Price = *input.Price
     }
     if input.Stock != nil { p.Stock = *input.Stock }
-    p.UpdatedAt = time.Now()
+    p.UpdatedAt = time.Now().UTC()
     if err := u.repo.Update(ctx, p); err != nil { return nil, fmt.Errorf("update product: %w", err) }
     return p, nil
 }
@@ -198,6 +196,8 @@ func ErrorMiddleware(logger *slog.Logger) gin.HandlerFunc {
 }
 ```
 
+> `c.JSON` after `c.Next()` in middleware sets the response. `c.Abort()` is unnecessary because all handlers have already executed — `c.Next()` returns after the handler chain completes.
+
 **Thin handler — no mapping logic:**
 ```go
 func (h *ProductHandler) GetByID(c *gin.Context) {
@@ -205,7 +205,7 @@ func (h *ProductHandler) GetByID(c *gin.Context) {
     if err != nil { _ = c.Error(fmt.Errorf("invalid product ID: %w", domain.ErrValidation)); return }
     product, err := h.uc.GetProduct(c.Request.Context(), id)
     if err != nil { _ = c.Error(err); return }
-    c.JSON(http.StatusOK, product)
+    c.JSON(http.StatusOK, toProductResponse(product))
 }
 ```
 
@@ -231,7 +231,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
     product, err := h.uc.CreateProduct(c.Request.Context(), domain.CreateProductInput{
         Name: req.Name, Description: req.Description, Price: req.Price, Stock: req.Stock})
     if err != nil { _ = c.Error(err); return }
-    c.JSON(http.StatusCreated, product)
+    c.JSON(http.StatusCreated, toProductResponse(product))
 }
 
 // formatBindError extracts field-level validation details from binding errors.

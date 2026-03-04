@@ -41,5 +41,5 @@ Multi-agent guidance for the `golang-gin-clean-arch` repository.
 
 - All code examples must compile, handle errors, use `context.Context`, and use `log/slog`
 - Use the `Product` domain model across all examples (defined in `docs/SPECIFICATION.md`)
-- Cross-references to gin-best-practices use skill names (e.g., "see the **gin-api** skill"), not file paths
+- Cross-references to gin-best-practices use full skill names (e.g., "see the **golang-gin-api** skill"), not file paths
 - Conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`
