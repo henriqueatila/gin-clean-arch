@@ -218,6 +218,9 @@ func (h *ProductHandler) GetByID(c *gin.Context) {
 Two kinds: struct-tag binding (`ShouldBindJSON`) and business rule (usecase).
 
 ```go
+import ("errors"; "strings"
+    "github.com/go-playground/validator/v10")
+
 type createProductRequest struct {
     Name        string `json:"name"        binding:"required,min=2,max=200"`
     Description string `json:"description" binding:"max=1000"`
@@ -235,7 +238,6 @@ func (h *ProductHandler) Create(c *gin.Context) {
 }
 
 // formatBindError extracts field-level validation details from binding errors.
-// Requires: "github.com/go-playground/validator/v10" and "strings"
 func formatBindError(err error) *domain.AppError {
     var ve validator.ValidationErrors
     if errors.As(err, &ve) {

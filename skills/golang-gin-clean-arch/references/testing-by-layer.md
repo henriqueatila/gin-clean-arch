@@ -137,10 +137,10 @@ func newTestRouter(uc domain.ProductUsecase) *gin.Engine {
 }
 
 func TestCreateProductHandler(t *testing.T) {
-	validBody := map[string]any{"name": "Widget", "price": 999, "stock": 5}
+	validBody, _ := json.Marshal(map[string]any{"name": "Widget", "price": 999, "stock": 5})
 	tests := []struct {
 		name       string
-		body       any
+		body       []byte
 		setup      func(*mocks.ProductUsecase)
 		wantStatus int
 	}{
@@ -149,7 +149,7 @@ func TestCreateProductHandler(t *testing.T) {
 				m.On("CreateProduct", mock.Anything, mock.Anything).
 					Return(&domain.Product{ID: uuid.New(), Name: "Widget", Price: 999}, nil)
 			}},
-		{name: "bad JSON → 422", body: `{bad`,
+		{name: "bad JSON → 422", body: []byte(`{bad`),
 			setup: func(*mocks.ProductUsecase) {}, wantStatus: http.StatusUnprocessableEntity},
 		{name: "conflict → 409", body: validBody, wantStatus: http.StatusConflict,
 			setup: func(m *mocks.ProductUsecase) {
@@ -161,9 +161,7 @@ func TestCreateProductHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			uc := mocks.NewProductUsecase(t)
 			tc.setup(uc)
-			body, err := json.Marshal(tc.body)
-			require.NoError(t, err)
-			req, err := http.NewRequest(http.MethodPost, "/api/v1/products", bytes.NewReader(body))
+			req, err := http.NewRequest(http.MethodPost, "/api/v1/products", bytes.NewReader(tc.body))
 			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()

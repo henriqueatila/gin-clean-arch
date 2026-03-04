@@ -248,6 +248,8 @@ Tune `MaxOpenConns` to your DB plan's connection limit.
 
 **Dynamic filtering** — parameterised WHERE; never interpolate user strings:
 ```go
+import ("fmt"; "strings")
+
 // escapeLike escapes LIKE/ILIKE wildcards in user input to prevent pattern abuse.
 func escapeLike(s string) string {
     r := strings.NewReplacer("%", "\\%", "_", "\\_")
