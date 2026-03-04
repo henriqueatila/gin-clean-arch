@@ -2,7 +2,7 @@
   "version": "1.1.1",
   "organization": "henriqueatila",
   "date": "March 2026",
-  "abstract": "Clean Architecture patterns for Go Gin APIs — layer separation, dependency injection, repository pattern, error handling, testing by layer, and project scaffolding.",
+  "abstract": "Clean Architecture patterns for Go Gin APIs — layer separation, dependency injection, repository pattern, error handling, input sanitization, testing by layer, and project scaffolding.",
   "references": [
     "https://gin-gonic.com/docs/",
     "https://pkg.go.dev/github.com/gin-gonic/gin",

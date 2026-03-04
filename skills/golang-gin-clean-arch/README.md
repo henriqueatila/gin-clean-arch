@@ -11,6 +11,7 @@ Clean Architecture patterns for Go Gin APIs.
 - **references/dependency-injection-alternatives.md** — Scaling DI, Wire/Fx alternatives
 - **references/repository-pattern.md** — SQLC, GORM, transactions, query patterns
 - **references/error-handling.md** — Domain errors, propagation, HTTP mapping
+- **references/input-sanitization.md** — Sanitize untrusted strings at delivery boundary
 - **references/testing-by-layer.md** — Mock-per-layer, testcontainers, coverage goals
 - **references/project-scaffolding.md** — From-scratch setup, Makefile, configuration
 
